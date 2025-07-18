@@ -117,8 +117,13 @@ class SustainabilityGraphIntegrator:
     
     def create_interactive_visualization(self):
         """インタラクティブな可視化を作成"""
-        # レイアウトの計算
-        pos = nx.spring_layout(self.integrated_graph, k=3, iterations=50)
+        # レイアウトの計算 - より広い間隔で配置
+        pos = nx.spring_layout(
+            self.integrated_graph, 
+            k=5,  # ノード間の距離を大きく
+            iterations=100,  # より多くの反復で安定化
+            seed=42  # 再現性のため
+        )
         
         # ノードの準備
         node_x = []
@@ -140,8 +145,19 @@ class SustainabilityGraphIntegrator:
             count = data['count']
             companies = data['companies']
             
-            # ノードサイズ（データ数に比例）
-            node_size.append(max(20, count * 5))
+            # ノードサイズ（データ数に比例、但し適切な範囲に制限）
+            min_size = 15
+            max_size = 60
+            max_count = max([d['count'] for d in self.cluster_data.values()])
+            
+            # 対数スケールでサイズを調整
+            if max_count > 0:
+                normalized_count = np.log(count + 1) / np.log(max_count + 1)
+                size = min_size + (max_size - min_size) * normalized_count
+            else:
+                size = min_size
+            
+            node_size.append(size)
             
             # ノード色
             node_color.append(type_colors.get(node_type, '#999999'))
@@ -183,8 +199,18 @@ class SustainabilityGraphIntegrator:
             total_weight = edge_data['total_weight']
             relations = edge_data['relations']
             
-            # エッジの幅（重みに比例）
-            edge_width.append(max(1, total_weight * 2))
+            # エッジの幅（重みに比例、但し適切な範囲に制限）
+            min_width = 1
+            max_width = 8
+            max_weight = max([data['total_weight'] for data in self.integrated_graph.edges.values()])
+            
+            if max_weight > 0:
+                normalized_weight = total_weight / max_weight
+                width = min_width + (max_width - min_width) * normalized_weight
+            else:
+                width = min_width
+            
+            edge_width.append(width)
             
             # エッジの色（主要な関係タイプに基づく）
             main_relation = max(relations.items(), key=lambda x: x[1])[0]
@@ -218,6 +244,7 @@ class SustainabilityGraphIntegrator:
                         width=edge_width[i//3],
                         color=edge_color[i//3]
                     ),
+                    opacity=0.6,  # エッジの透明度を追加
                     hoverinfo='text',
                     hovertext=edge_info[i//3],
                     showlegend=False
@@ -231,11 +258,12 @@ class SustainabilityGraphIntegrator:
             marker=dict(
                 size=node_size,
                 color=node_color,
-                line=dict(width=2, color='white')
+                line=dict(width=2, color='white'),
+                opacity=0.8
             ),
             text=[t.split('<br>')[0] for t in node_text],  # クラスタIDのみ表示
             textposition="middle center",
-            textfont=dict(size=10, color='white'),
+            textfont=dict(size=8, color='white'),
             hoverinfo='text',
             hovertext=node_info,
             showlegend=False
@@ -250,19 +278,30 @@ class SustainabilityGraphIntegrator:
             ),
             showlegend=False,
             hovermode='closest',
-            margin=dict(b=20,l=5,r=5,t=40),
+            margin=dict(b=20,l=20,r=20,t=60),
             annotations=[ dict(
-                text="ノードサイズ: データ数, エッジ幅: 接続頻度",
+                text="ノードサイズ: データ数(対数スケール), エッジ幅: 接続頻度",
                 showarrow=False,
                 xref="paper", yref="paper",
                 x=0.005, y=-0.002,
                 xanchor='left', yanchor='bottom',
                 font=dict(size=12, color='grey')
             )],
-            xaxis=dict(showgrid=False, zeroline=False, showticklabels=False),
-            yaxis=dict(showgrid=False, zeroline=False, showticklabels=False),
+            xaxis=dict(
+                showgrid=False, 
+                zeroline=False, 
+                showticklabels=False,
+                range=[min(node_x) - 0.5, max(node_x) + 0.5]  # 余白を追加
+            ),
+            yaxis=dict(
+                showgrid=False, 
+                zeroline=False, 
+                showticklabels=False,
+                range=[min(node_y) - 0.5, max(node_y) + 0.5]  # 余白を追加
+            ),
             plot_bgcolor='white',
-            height=800
+            height=800,
+            width=1200  # 幅を広げる
         )
         
         return fig
