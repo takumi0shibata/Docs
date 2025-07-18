@@ -451,6 +451,232 @@ class SustainabilityGraphIntegrator:
             'texts': data['texts'],
             'connected_clusters': list(self.integrated_graph.neighbors(cluster_id))
         }
+    
+    def export_to_html(self, output_dir="./", filename_prefix="sustainability_graph"):
+        """
+        グラフをHTMLファイルとして書き出し
+        
+        Args:
+            output_dir: 出力ディレクトリ
+            filename_prefix: ファイル名のプレフィックス
+        
+        Returns:
+            tuple: (メイングラフのファイルパス, ダッシュボードのファイルパス)
+        """
+        import os
+        from datetime import datetime
+        
+        # 出力ディレクトリが存在しない場合は作成
+        os.makedirs(output_dir, exist_ok=True)
+        
+        # タイムスタンプを追加
+        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+        
+        # メイングラフの作成と保存
+        main_fig = self.create_interactive_visualization()
+        main_filename = f"{filename_prefix}_main_{timestamp}.html"
+        main_filepath = os.path.join(output_dir, main_filename)
+        
+        main_fig.write_html(
+            main_filepath,
+            include_plotlyjs='cdn',  # CDNからPlotly.jsを読み込み（ファイルサイズを小さく）
+            config={'displayModeBar': True, 'displaylogo': False},
+            div_id="sustainability-main-graph"
+        )
+        
+        # ダッシュボードの作成と保存
+        dashboard_fig = self.create_summary_dashboard()
+        dashboard_filename = f"{filename_prefix}_dashboard_{timestamp}.html"
+        dashboard_filepath = os.path.join(output_dir, dashboard_filename)
+        
+        dashboard_fig.write_html(
+            dashboard_filepath,
+            include_plotlyjs='cdn',
+            config={'displayModeBar': True, 'displaylogo': False},
+            div_id="sustainability-dashboard"
+        )
+        
+        print(f"HTMLファイルが正常に作成されました:")
+        print(f"  メイングラフ: {main_filepath}")
+        print(f"  ダッシュボード: {dashboard_filepath}")
+        
+        return main_filepath, dashboard_filepath
+    
+    def export_combined_html(self, output_dir="./", filename="sustainability_analysis.html"):
+        """
+        メイングラフとダッシュボードを1つのHTMLファイルに統合して書き出し
+        
+        Args:
+            output_dir: 出力ディレクトリ
+            filename: ファイル名
+        
+        Returns:
+            str: 作成されたファイルのパス
+        """
+        import os
+        from datetime import datetime
+        
+        # 出力ディレクトリが存在しない場合は作成
+        os.makedirs(output_dir, exist_ok=True)
+        
+        # タイムスタンプを追加
+        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+        filename_with_timestamp = f"{filename.replace('.html', '')}_{timestamp}.html"
+        filepath = os.path.join(output_dir, filename_with_timestamp)
+        
+        # グラフの作成
+        main_fig = self.create_interactive_visualization()
+        dashboard_fig = self.create_summary_dashboard()
+        
+        # HTMLテンプレートの作成
+        html_content = f"""
+<!DOCTYPE html>
+<html>
+<head>
+    <title>サステナビリティデータ統合分析</title>
+    <meta charset="utf-8">
+    <script src="https://cdn.plot.ly/plotly-latest.min.js"></script>
+    <style>
+        body {{
+            font-family: 'Arial', sans-serif;
+            margin: 0;
+            padding: 20px;
+            background-color: #f5f5f5;
+        }}
+        .container {{
+            max-width: 1400px;
+            margin: 0 auto;
+            background-color: white;
+            padding: 30px;
+            border-radius: 10px;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+        }}
+        h1 {{
+            color: #333;
+            text-align: center;
+            margin-bottom: 30px;
+            font-size: 2.5em;
+        }}
+        h2 {{
+            color: #555;
+            margin-top: 40px;
+            margin-bottom: 20px;
+            font-size: 1.8em;
+            border-bottom: 2px solid #4ECDC4;
+            padding-bottom: 10px;
+        }}
+        .graph-container {{
+            margin-bottom: 40px;
+            padding: 20px;
+            background-color: #fafafa;
+            border-radius: 8px;
+            border: 1px solid #e0e0e0;
+        }}
+        .info-box {{
+            background-color: #e8f4f8;
+            padding: 15px;
+            border-left: 4px solid #4ECDC4;
+            margin: 20px 0;
+            border-radius: 4px;
+        }}
+        .legend {{
+            display: flex;
+            justify-content: center;
+            flex-wrap: wrap;
+            margin: 20px 0;
+            gap: 15px;
+        }}
+        .legend-item {{
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            padding: 8px 12px;
+            background-color: white;
+            border-radius: 20px;
+            border: 1px solid #ddd;
+        }}
+        .legend-color {{
+            width: 12px;
+            height: 12px;
+            border-radius: 50%;
+        }}
+        .export-info {{
+            text-align: center;
+            color: #666;
+            font-size: 0.9em;
+            margin-top: 30px;
+            padding-top: 20px;
+            border-top: 1px solid #eee;
+        }}
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>🌱 サステナビリティデータ統合分析</h1>
+        
+        <div class="info-box">
+            <p><strong>このレポートについて:</strong> 複数企業のサステナビリティデータを統合分析し、リスク・機会・戦略・目標・実績の関係性を可視化したものです。</p>
+        </div>
+        
+        <div class="legend">
+            <div class="legend-item">
+                <div class="legend-color" style="background-color: #FF6B6B;"></div>
+                <span>Risk (リスク)</span>
+            </div>
+            <div class="legend-item">
+                <div class="legend-color" style="background-color: #4ECDC4;"></div>
+                <span>Opportunity (機会)</span>
+            </div>
+            <div class="legend-item">
+                <div class="legend-color" style="background-color: #45B7D1;"></div>
+                <span>Strategy (戦略)</span>
+            </div>
+            <div class="legend-item">
+                <div class="legend-color" style="background-color: #96CEB4;"></div>
+                <span>Target (目標)</span>
+            </div>
+            <div class="legend-item">
+                <div class="legend-color" style="background-color: #FECA57;"></div>
+                <span>Actual (実績)</span>
+            </div>
+        </div>
+        
+        <h2>📊 統合ネットワークグラフ</h2>
+        <div class="graph-container">
+            <div id="main-graph"></div>
+        </div>
+        
+        <h2>📈 統計ダッシュボード</h2>
+        <div class="graph-container">
+            <div id="dashboard"></div>
+        </div>
+        
+        <div class="export-info">
+            <p>作成日時: {datetime.now().strftime('%Y年%m月%d日 %H:%M:%S')}</p>
+            <p>このファイルはインタラクティブなグラフを含んでいます。マウスでホバーしたり、ズームしたりできます。</p>
+        </div>
+    </div>
+
+    <script>
+        // メイングラフの描画
+        {main_fig.to_html(include_plotlyjs=False, div_id="main-graph")}
+        
+        // ダッシュボードの描画  
+        {dashboard_fig.to_html(include_plotlyjs=False, div_id="dashboard")}
+    </script>
+</body>
+</html>
+"""
+        
+        # HTMLファイルの書き出し
+        with open(filepath, 'w', encoding='utf-8') as f:
+            f.write(html_content)
+        
+        print(f"統合HTMLファイルが正常に作成されました: {filepath}")
+        print(f"ファイルサイズ: {os.path.getsize(filepath) / 1024:.1f} KB")
+        print(f"ブラウザで開くか、メールで共有してください。")
+        
+        return filepath
 
 # 使用例
 def demo_with_sample_data():
@@ -514,6 +740,15 @@ if __name__ == "__main__":
     main_fig.show()
     dashboard_fig.show()
     
+    # HTMLファイルとして書き出し
+    print("\n=== HTMLファイルの書き出し ===")
+    
+    # 個別ファイルとして書き出し
+    main_path, dashboard_path = integrator.export_to_html()
+    
+    # 統合ファイルとして書き出し
+    combined_path = integrator.export_combined_html()
+    
     # 特定のクラスタの詳細表示例
     print("\n=== クラスタrisk_C1の詳細 ===")
     details = integrator.get_cluster_details("risk_C1")
@@ -522,3 +757,9 @@ if __name__ == "__main__":
         print(f"データ数: {details['count']}")
         print(f"関連企業: {details['companies']}")
         print(f"接続先クラスタ: {details['connected_clusters']}")
+    
+    print(f"\n=== 共有方法 ===")
+    print(f"1. 統合HTML: {combined_path}")
+    print(f"2. メイングラフ: {main_path}")
+    print(f"3. ダッシュボード: {dashboard_path}")
+    print(f"\nこれらのファイルをブラウザで開くか、メールで送信して共有できます。")
