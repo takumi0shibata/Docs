@@ -115,15 +115,51 @@ class SustainabilityGraphIntegrator:
         }
         return type_colors
     
+    def create_layered_layout(self):
+        """typeごとに層状にレイアウトを作成"""
+        pos = {}
+        
+        # typeごとにノードを分類
+        type_nodes = {
+            'risk': [],
+            'opportunity': [],
+            'strategy': [],
+            'target': [],
+            'actual': []
+        }
+        
+        for node in self.integrated_graph.nodes():
+            node_type = self.integrated_graph.nodes[node]['type']
+            type_nodes[node_type].append(node)
+        
+        # 各typeの配置位置を定義（Y座標）
+        type_positions = {
+            'risk': 4,
+            'opportunity': 3,
+            'strategy': 2,
+            'target': 1,
+            'actual': 0
+        }
+        
+        # 各typeのノードを配置
+        for node_type, nodes in type_nodes.items():
+            y_pos = type_positions[node_type]
+            
+            if len(nodes) == 0:
+                continue
+            elif len(nodes) == 1:
+                # 1つの場合は中央に配置
+                pos[nodes[0]] = (0, y_pos)
+            else:
+                # 複数の場合は等間隔に配置
+                x_positions = np.linspace(-2, 2, len(nodes))
+                for i, node in enumerate(nodes):
+                    pos[node] = (x_positions[i], y_pos)
+        
     def create_interactive_visualization(self):
         """インタラクティブな可視化を作成"""
-        # レイアウトの計算 - より広い間隔で配置
-        pos = nx.spring_layout(
-            self.integrated_graph, 
-            k=5,  # ノード間の距離を大きく
-            iterations=100,  # より多くの反復で安定化
-            seed=42  # 再現性のため
-        )
+        # 層状レイアウトの作成
+        pos = self.create_layered_layout()
         
         # ノードの準備
         node_x = []
@@ -279,25 +315,38 @@ class SustainabilityGraphIntegrator:
             showlegend=False,
             hovermode='closest',
             margin=dict(b=20,l=20,r=20,t=60),
-            annotations=[ dict(
-                text="ノードサイズ: データ数(対数スケール), エッジ幅: 接続頻度",
-                showarrow=False,
-                xref="paper", yref="paper",
-                x=0.005, y=-0.002,
-                xanchor='left', yanchor='bottom',
-                font=dict(size=12, color='grey')
-            )],
+            annotations=[
+                dict(
+                    text="ノードサイズ: データ数(対数スケール), エッジ幅: 接続頻度",
+                    showarrow=False,
+                    xref="paper", yref="paper",
+                    x=0.005, y=-0.002,
+                    xanchor='left', yanchor='bottom',
+                    font=dict(size=12, color='grey')
+                ),
+                # 各層のラベルを追加
+                dict(text="Risk", x=-2.5, y=4, showarrow=False, 
+                     font=dict(size=14, color='#FF6B6B', family='Arial Black')),
+                dict(text="Opportunity", x=-2.5, y=3, showarrow=False,
+                     font=dict(size=14, color='#4ECDC4', family='Arial Black')),
+                dict(text="Strategy", x=-2.5, y=2, showarrow=False,
+                     font=dict(size=14, color='#45B7D1', family='Arial Black')),
+                dict(text="Target", x=-2.5, y=1, showarrow=False,
+                     font=dict(size=14, color='#96CEB4', family='Arial Black')),
+                dict(text="Actual", x=-2.5, y=0, showarrow=False,
+                     font=dict(size=14, color='#FECA57', family='Arial Black'))
+            ],
             xaxis=dict(
                 showgrid=False, 
                 zeroline=False, 
                 showticklabels=False,
-                range=[min(node_x) - 0.5, max(node_x) + 0.5]  # 余白を追加
+                range=[-3, 3]  # 固定範囲
             ),
             yaxis=dict(
                 showgrid=False, 
                 zeroline=False, 
                 showticklabels=False,
-                range=[min(node_y) - 0.5, max(node_y) + 0.5]  # 余白を追加
+                range=[-0.5, 4.5]  # 固定範囲
             ),
             plot_bgcolor='white',
             height=800,
