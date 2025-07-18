@@ -41,17 +41,20 @@ class SustainabilityGraphIntegrator:
                 node_type = node['type']
                 text = node['text']
                 
-                # クラスタ情報の更新
-                if cluster_id not in self.cluster_data:
-                    self.cluster_data[cluster_id]['type'] = node_type
+                # typeとclusterの組み合わせで一意なクラスタIDを作成
+                unique_cluster_id = f"{node_type}_{cluster_id}"
                 
-                self.cluster_data[cluster_id]['texts'].append({
+                # クラスタ情報の更新
+                if unique_cluster_id not in self.cluster_data:
+                    self.cluster_data[unique_cluster_id]['type'] = node_type
+                
+                self.cluster_data[unique_cluster_id]['texts'].append({
                     'company': company_name,
                     'text': text,
                     'original_id': node['id']
                 })
-                self.cluster_data[cluster_id]['companies'].add(company_name)
-                self.cluster_data[cluster_id]['count'] += 1
+                self.cluster_data[unique_cluster_id]['companies'].add(company_name)
+                self.cluster_data[unique_cluster_id]['count'] += 1
             
             # エッジデータの統合
             for edge in company_data.get('edges', []):
@@ -61,9 +64,9 @@ class SustainabilityGraphIntegrator:
                 
                 for node in company_data.get('nodes', []):
                     if node['id'] == edge['source']:
-                        source_cluster = node['cluster']
+                        source_cluster = f"{node['type']}_{node['cluster']}"
                     if node['id'] == edge['target']:
-                        target_cluster = node['cluster']
+                        target_cluster = f"{node['type']}_{node['cluster']}"
                 
                 if source_cluster and target_cluster:
                     edge_key = (source_cluster, target_cluster, edge['relation'])
@@ -368,10 +371,10 @@ def demo_with_sample_data():
         {
             "nodes": [
                 {"id": "N1", "type": "risk", "text": "気候変動による物理的リスク", "cluster": "C1"},
-                {"id": "N2", "type": "opportunity", "text": "再生可能エネルギー市場の拡大", "cluster": "C2"},
-                {"id": "N3", "type": "strategy", "text": "カーボンニュートラル戦略", "cluster": "C3"},
-                {"id": "N4", "type": "target", "text": "2030年CO2削減50%", "cluster": "C4"},
-                {"id": "N5", "type": "actual", "text": "2023年CO2削減20%", "cluster": "C5"}
+                {"id": "N2", "type": "opportunity", "text": "再生可能エネルギー市場の拡大", "cluster": "C1"},
+                {"id": "N3", "type": "strategy", "text": "カーボンニュートラル戦略", "cluster": "C1"},
+                {"id": "N4", "type": "target", "text": "2030年CO2削減50%", "cluster": "C1"},
+                {"id": "N5", "type": "actual", "text": "2023年CO2削減20%", "cluster": "C1"}
             ],
             "edges": [
                 {"source": "N1", "target": "N3", "relation": "addresses_risk"},
@@ -383,10 +386,10 @@ def demo_with_sample_data():
         {
             "nodes": [
                 {"id": "N1", "type": "risk", "text": "規制強化による操業リスク", "cluster": "C1"},
-                {"id": "N2", "type": "opportunity", "text": "ESG投資の増加", "cluster": "C2"},
-                {"id": "N3", "type": "strategy", "text": "サステナブル経営の推進", "cluster": "C3"},
-                {"id": "N4", "type": "target", "text": "ESGスコア向上", "cluster": "C4"},
-                {"id": "N5", "type": "actual", "text": "ESGスコア15%向上", "cluster": "C5"}
+                {"id": "N2", "type": "opportunity", "text": "ESG投資の増加", "cluster": "C1"},
+                {"id": "N3", "type": "strategy", "text": "サステナブル経営の推進", "cluster": "C1"},
+                {"id": "N4", "type": "target", "text": "ESGスコア向上", "cluster": "C1"},
+                {"id": "N5", "type": "actual", "text": "ESGスコア15%向上", "cluster": "C1"}
             ],
             "edges": [
                 {"source": "N1", "target": "N3", "relation": "addresses_risk"},
@@ -422,8 +425,8 @@ if __name__ == "__main__":
     dashboard_fig.show()
     
     # 特定のクラスタの詳細表示例
-    print("\n=== クラスタC1の詳細 ===")
-    details = integrator.get_cluster_details("C1")
+    print("\n=== クラスタrisk_C1の詳細 ===")
+    details = integrator.get_cluster_details("risk_C1")
     if details:
         print(f"タイプ: {details['type']}")
         print(f"データ数: {details['count']}")
