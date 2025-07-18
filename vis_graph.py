@@ -156,7 +156,7 @@ class SustainabilityGraphIntegrator:
                 for i, node in enumerate(nodes):
                     pos[node] = (x_positions[i], y_pos)
         
-        return pos  # この行が追加されました
+        return pos
     
     def create_interactive_visualization(self):
         """インタラクティブな可視化を作成"""
@@ -282,7 +282,7 @@ class SustainabilityGraphIntegrator:
                         width=edge_width[i//3],
                         color=edge_color[i//3]
                     ),
-                    opacity=0.6,  # エッジの透明度を追加
+                    opacity=0.6,
                     hoverinfo='text',
                     hovertext=edge_info[i//3],
                     showlegend=False
@@ -299,7 +299,7 @@ class SustainabilityGraphIntegrator:
                 line=dict(width=2, color='white'),
                 opacity=0.8
             ),
-            text=[t.split('<br>')[0] for t in node_text],  # クラスタIDのみ表示
+            text=[t.split('<br>')[0] for t in node_text],
             textposition="middle center",
             textfont=dict(size=8, color='white'),
             hoverinfo='text',
@@ -342,17 +342,17 @@ class SustainabilityGraphIntegrator:
                 showgrid=False, 
                 zeroline=False, 
                 showticklabels=False,
-                range=[-3, 3]  # 固定範囲
+                range=[-3, 3]
             ),
             yaxis=dict(
                 showgrid=False, 
                 zeroline=False, 
                 showticklabels=False,
-                range=[-0.5, 4.5]  # 固定範囲
+                range=[-0.5, 4.5]
             ),
             plot_bgcolor='white',
             height=800,
-            width=1200  # 幅を広げる
+            width=1200
         )
         
         return fig
@@ -479,7 +479,7 @@ class SustainabilityGraphIntegrator:
         
         main_fig.write_html(
             main_filepath,
-            include_plotlyjs='cdn',  # CDNからPlotly.jsを読み込み（ファイルサイズを小さく）
+            include_plotlyjs='cdn',
             config={'displayModeBar': True, 'displaylogo': False},
             div_id="sustainability-main-graph"
         )
@@ -528,9 +528,12 @@ class SustainabilityGraphIntegrator:
         main_fig = self.create_interactive_visualization()
         dashboard_fig = self.create_summary_dashboard()
         
+        # PlotlyのJSONデータを取得
+        main_json = main_fig.to_json()
+        dashboard_json = dashboard_fig.to_json()
+        
         # HTMLテンプレートの作成
-        html_content = f"""
-<!DOCTYPE html>
+        html_content = f"""<!DOCTYPE html>
 <html>
 <head>
     <title>サステナビリティデータ統合分析</title>
@@ -608,6 +611,10 @@ class SustainabilityGraphIntegrator:
             padding-top: 20px;
             border-top: 1px solid #eee;
         }}
+        #main-graph, #dashboard {{
+            width: 100%;
+            height: 800px;
+        }}
     </style>
 </head>
 <body>
@@ -659,14 +666,29 @@ class SustainabilityGraphIntegrator:
 
     <script>
         // メイングラフの描画
-        {main_fig.to_html(include_plotlyjs=False, div_id="main-graph")}
+        var mainGraphData = {main_json};
+        Plotly.newPlot('main-graph', mainGraphData.data, mainGraphData.layout, {{
+            displayModeBar: true,
+            displaylogo: false,
+            responsive: true
+        }});
         
         // ダッシュボードの描画  
-        {dashboard_fig.to_html(include_plotlyjs=False, div_id="dashboard")}
+        var dashboardData = {dashboard_json};
+        Plotly.newPlot('dashboard', dashboardData.data, dashboardData.layout, {{
+            displayModeBar: true,
+            displaylogo: false,
+            responsive: true
+        }});
+        
+        // レスポンシブ対応
+        window.addEventListener('resize', function() {{
+            Plotly.Plots.resize('main-graph');
+            Plotly.Plots.resize('dashboard');
+        }});
     </script>
 </body>
-</html>
-"""
+</html>"""
         
         # HTMLファイルの書き出し
         with open(filepath, 'w', encoding='utf-8') as f:
