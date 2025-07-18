@@ -156,6 +156,8 @@ class SustainabilityGraphIntegrator:
                 for i, node in enumerate(nodes):
                     pos[node] = (x_positions[i], y_pos)
         
+        return pos  # この行が追加されました
+    
     def create_interactive_visualization(self):
         """インタラクティブな可視化を作成"""
         # 層状レイアウトの作成
