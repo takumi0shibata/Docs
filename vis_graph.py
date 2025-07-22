@@ -116,7 +116,7 @@ class SustainabilityGraphIntegrator:
         return type_colors
     
     def create_layered_layout(self):
-        """typeごとに層状にレイアウトを作成"""
+        """typeごとに層状にレイアウトを作成（RiskとOpportunityを同一階層に配置）"""
         pos = {}
         
         # typeごとにノードを分類
@@ -132,22 +132,68 @@ class SustainabilityGraphIntegrator:
             node_type = self.integrated_graph.nodes[node]['type']
             type_nodes[node_type].append(node)
         
-        # 各typeの配置位置を定義（Y座標）
+        # 各typeの配置位置を定義（Y座標）- RiskとOpportunityを同じ階層に
         type_positions = {
-            'risk': 4,
-            'opportunity': 3,
+            'risk': 3,      # Risk と Opportunity を同一階層に
+            'opportunity': 3,  # Risk と Opportunity を同一階層に
             'strategy': 2,
             'target': 1,
             'actual': 0
         }
         
-        # 各typeのノードを配置
-        for node_type, nodes in type_nodes.items():
+        # Risk と Opportunity を同一階層に配置するための特別処理
+        risk_nodes = type_nodes['risk']
+        opportunity_nodes = type_nodes['opportunity']
+        
+        # Risk と Opportunity が両方存在する場合の配置
+        if risk_nodes and opportunity_nodes:
+            y_pos = 3
+            
+            # Risk を左側に配置
+            if len(risk_nodes) == 1:
+                pos[risk_nodes[0]] = (-1.5, y_pos)
+            else:
+                x_positions_risk = np.linspace(-2.5, -0.5, len(risk_nodes))
+                for i, node in enumerate(risk_nodes):
+                    pos[node] = (x_positions_risk[i], y_pos)
+            
+            # Opportunity を右側に配置
+            if len(opportunity_nodes) == 1:
+                pos[opportunity_nodes[0]] = (1.5, y_pos)
+            else:
+                x_positions_opp = np.linspace(0.5, 2.5, len(opportunity_nodes))
+                for i, node in enumerate(opportunity_nodes):
+                    pos[node] = (x_positions_opp[i], y_pos)
+        
+        # Risk のみの場合
+        elif risk_nodes and not opportunity_nodes:
+            y_pos = 3
+            if len(risk_nodes) == 1:
+                pos[risk_nodes[0]] = (-1, y_pos)
+            else:
+                x_positions = np.linspace(-2, 0, len(risk_nodes))
+                for i, node in enumerate(risk_nodes):
+                    pos[node] = (x_positions[i], y_pos)
+        
+        # Opportunity のみの場合
+        elif opportunity_nodes and not risk_nodes:
+            y_pos = 3
+            if len(opportunity_nodes) == 1:
+                pos[opportunity_nodes[0]] = (1, y_pos)
+            else:
+                x_positions = np.linspace(0, 2, len(opportunity_nodes))
+                for i, node in enumerate(opportunity_nodes):
+                    pos[node] = (x_positions[i], y_pos)
+        
+        # その他のtype（strategy, target, actual）の配置
+        for node_type in ['strategy', 'target', 'actual']:
+            nodes = type_nodes[node_type]
+            if not nodes:
+                continue
+                
             y_pos = type_positions[node_type]
             
-            if len(nodes) == 0:
-                continue
-            elif len(nodes) == 1:
+            if len(nodes) == 1:
                 # 1つの場合は中央に配置
                 pos[nodes[0]] = (0, y_pos)
             else:
@@ -326,29 +372,29 @@ class SustainabilityGraphIntegrator:
                     xanchor='left', yanchor='bottom',
                     font=dict(size=12, color='grey')
                 ),
-                # 各層のラベルを追加
-                dict(text="Risk", x=-2.5, y=4, showarrow=False, 
+                # 各層のラベルを追加 - Risk と Opportunity を同一階層に表示
+                dict(text="Risk", x=-2.8, y=3, showarrow=False, 
                      font=dict(size=14, color='#FF6B6B', family='Arial Black')),
-                dict(text="Opportunity", x=-2.5, y=3, showarrow=False,
+                dict(text="Opportunity", x=2.8, y=3, showarrow=False,
                      font=dict(size=14, color='#4ECDC4', family='Arial Black')),
-                dict(text="Strategy", x=-2.5, y=2, showarrow=False,
+                dict(text="Strategy", x=-2.8, y=2, showarrow=False,
                      font=dict(size=14, color='#45B7D1', family='Arial Black')),
-                dict(text="Target", x=-2.5, y=1, showarrow=False,
+                dict(text="Target", x=-2.8, y=1, showarrow=False,
                      font=dict(size=14, color='#96CEB4', family='Arial Black')),
-                dict(text="Actual", x=-2.5, y=0, showarrow=False,
+                dict(text="Actual", x=-2.8, y=0, showarrow=False,
                      font=dict(size=14, color='#FECA57', family='Arial Black'))
             ],
             xaxis=dict(
                 showgrid=False, 
                 zeroline=False, 
                 showticklabels=False,
-                range=[-3, 3]
+                range=[-3.5, 3.5]  # X軸の範囲を少し広げて左右のラベルが見えるように
             ),
             yaxis=dict(
                 showgrid=False, 
                 zeroline=False, 
                 showticklabels=False,
-                range=[-0.5, 4.5]
+                range=[-0.5, 3.5]
             ),
             plot_bgcolor='white',
             height=800,
@@ -500,7 +546,7 @@ class SustainabilityGraphIntegrator:
         print(f"  メイングラフ: {main_filepath}")
         print(f"  ダッシュボード: {dashboard_filepath}")
         
-        return main_filepath, dashboard_filepath
+        return main_filepath, dashboard_path
     
     def export_combined_html(self, output_dir="./", filename="sustainability_analysis.html"):
         """
@@ -622,7 +668,7 @@ class SustainabilityGraphIntegrator:
         <h1>🌱 サステナビリティデータ統合分析</h1>
         
         <div class="info-box">
-            <p><strong>このレポートについて:</strong> 複数企業のサステナビリティデータを統合分析し、リスク・機会・戦略・目標・実績の関係性を可視化したものです。</p>
+            <p><strong>このレポートについて:</strong> 複数企業のサステナビリティデータを統合分析し、リスク・機会・戦略・目標・実績の関係性を可視化したものです。RiskとOpportunityは同一階層に配置し、より自然なフローを表現しています。</p>
         </div>
         
         <div class="legend">
