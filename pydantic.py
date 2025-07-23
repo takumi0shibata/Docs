@@ -213,8 +213,38 @@ def convert_ghg_json_to_excel(
         company_name = company_data.get('company_name', '')
         report_year = company_data.get('report_year')
         extraction_notes = company_data.get('extraction_notes', '')
+
+        if not scope_data_list:
+            # scope_dataが空の場合、基本情報のみの行を追加
+            base_row = {
+                'company_name': company_name,
+                'report_year': report_year,
+                'scope_pattern': '',  # scope_dataがないため空
+                'extraction_notes': extraction_notes,
+                'is_verified': False,
+                'verification_organization': '',
+                'verification_standard': '',
+                'verification_evidence': '',
+                'data_type': 'no_scope_data',
+                'amount': None,
+                'unit': '',
+                'year': None,
+                'scope3_categories': '',
+                'evidence': '',
+                'reduction_rate': None,
+                'reduction_amount': None,
+                'reduction_unit': '',
+                'baseline_year': None,
+                'achievement_year': None,
+                'target_year': None,
+                'is_increase': False,
+                'target_rate': None,
+                'is_carbon_neutral': False
+            }
+            rows.append(base_row)
+            continue  # 次の会社データへ
         
-        for scope_data in company_data.get('scope_data', []):
+        for scope_data in scope_data_list:
             scope_pattern = scope_data.get('scope_pattern', '')
             
             # 基本情報の行データ
