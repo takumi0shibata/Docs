@@ -181,3 +181,324 @@ JSON形式で出力し、提供されたPydanticスキーマに完全に準拠�
 **入力文書**: [ここに「サステナビリティに関する考え方及び取組」の章の内容を貼り付け]
 
 上記の文書から、指定されたJSON形式でGHG関連情報を抽出してください。
+
+
+# Convert JSON to EXCEL
+
+import polars as pl
+import json
+from typing import List, Dict, Any, Optional
+from pathlib import Path
+import pandas as pd
+
+def convert_ghg_json_to_excel(
+    json_data: List[Dict[str, Any]], 
+    output_path: str = "ghg_extraction_results.xlsx"
+) -> pl.DataFrame:
+    """
+    GHG抽出結果のJSONデータをPolarsデータフレームに変換し、Excelファイルとして出力
+    
+    Args:
+        json_data: GHGExtractionResultのリスト（JSON形式）
+        output_path: 出力するExcelファイルのパス
+    
+    Returns:
+        pl.DataFrame: 変換されたPolarsデータフレーム
+    """
+    
+    # データを格納するリスト
+    rows = []
+    
+    for company_data in json_data:
+        company_name = company_data.get('company_name', '')
+        report_year = company_data.get('report_year')
+        extraction_notes = company_data.get('extraction_notes', '')
+        
+        for scope_data in company_data.get('scope_data', []):
+            scope_pattern = scope_data.get('scope_pattern', '')
+            
+            # 基本情報の行データ
+            base_row = {
+                'company_name': company_name,
+                'report_year': report_year,
+                'scope_pattern': scope_pattern,
+                'extraction_notes': extraction_notes,
+            }
+            
+            # 第三者認証・検証情報
+            verification = scope_data.get('third_party_verification', {})
+            if verification:
+                base_row.update({
+                    'is_verified': verification.get('is_verified', False),
+                    'verification_organization': verification.get('verification_organization', ''),
+                    'verification_standard': verification.get('verification_standard', ''),
+                    'verification_evidence': verification.get('evidence', '')
+                })
+            else:
+                base_row.update({
+                    'is_verified': False,
+                    'verification_organization': '',
+                    'verification_standard': '',
+                    'verification_evidence': ''
+                })
+            
+            # GHG排出量データ
+            emissions = scope_data.get('emissions', [])
+            if emissions:
+                for emission in emissions:
+                    row = base_row.copy()
+                    row.update({
+                        'data_type': 'emission',
+                        'amount': emission.get('amount'),
+                        'unit': emission.get('unit', ''),
+                        'year': emission.get('year'),
+                        'scope3_categories': _format_categories(emission.get('scope3_categories', [])),
+                        'evidence': emission.get('evidence', ''),
+                        # 他の項目は空に設定
+                        'reduction_rate': None,
+                        'reduction_amount': None,
+                        'reduction_unit': '',
+                        'baseline_year': None,
+                        'achievement_year': None,
+                        'target_year': None,
+                        'is_increase': False,
+                        'target_rate': None,
+                        'is_carbon_neutral': False
+                    })
+                    rows.append(row)
+            
+            # 削減実績データ
+            reduction_results = scope_data.get('reduction_results', [])
+            if reduction_results:
+                for result in reduction_results:
+                    row = base_row.copy()
+                    row.update({
+                        'data_type': 'reduction_result',
+                        'reduction_rate': result.get('reduction_rate'),
+                        'reduction_amount': result.get('reduction_amount'),
+                        'reduction_unit': result.get('reduction_unit', ''),
+                        'baseline_year': result.get('baseline_year'),
+                        'achievement_year': result.get('achievement_year'),
+                        'scope3_categories': _format_categories(result.get('scope3_categories', [])),
+                        'is_increase': result.get('is_increase', False),
+                        'evidence': result.get('evidence', ''),
+                        # 他の項目は空に設定
+                        'amount': None,
+                        'unit': '',
+                        'year': None,
+                        'target_year': None,
+                        'target_rate': None,
+                        'is_carbon_neutral': False
+                    })
+                    rows.append(row)
+            
+            # 削減目標データ
+            reduction_targets = scope_data.get('reduction_targets', [])
+            if reduction_targets:
+                for target in reduction_targets:
+                    row = base_row.copy()
+                    row.update({
+                        'data_type': 'reduction_target',
+                        'target_rate': target.get('target_rate'),
+                        'baseline_year': target.get('baseline_year'),
+                        'target_year': target.get('target_year'),
+                        'scope3_categories': _format_categories(target.get('scope3_categories', [])),
+                        'is_carbon_neutral': target.get('is_carbon_neutral', False),
+                        'evidence': target.get('evidence', ''),
+                        # 他の項目は空に設定
+                        'amount': None,
+                        'unit': '',
+                        'year': None,
+                        'reduction_rate': None,
+                        'reduction_amount': None,
+                        'reduction_unit': '',
+                        'achievement_year': None,
+                        'is_increase': False
+                    })
+                    rows.append(row)
+            
+            # データが何もない場合は基本情報のみの行を追加
+            if not emissions and not reduction_results and not reduction_targets:
+                row = base_row.copy()
+                row.update({
+                    'data_type': 'no_data',
+                    'amount': None,
+                    'unit': '',
+                    'year': None,
+                    'scope3_categories': '',
+                    'evidence': '',
+                    'reduction_rate': None,
+                    'reduction_amount': None,
+                    'reduction_unit': '',
+                    'baseline_year': None,
+                    'achievement_year': None,
+                    'target_year': None,
+                    'is_increase': False,
+                    'target_rate': None,
+                    'is_carbon_neutral': False
+                })
+                rows.append(row)
+    
+    # Polarsデータフレームを作成
+    if not rows:
+        # 空のデータフレームを作成
+        df = pl.DataFrame(schema=_get_schema())
+    else:
+        df = pl.DataFrame(rows)
+    
+    # Excel出力用にPandasに変換（Polarsが直接Excel出力をサポートしていないため）
+    pandas_df = df.to_pandas()
+    
+    # Excelファイルに出力
+    with pd.ExcelWriter(output_path, engine='openpyxl') as writer:
+        pandas_df.to_excel(writer, sheet_name='GHG_Data', index=False)
+        
+        # ワークシートの書式設定
+        worksheet = writer.sheets['GHG_Data']
+        
+        # 列幅の自動調整
+        for column in worksheet.columns:
+            max_length = 0
+            column_letter = column[0].column_letter
+            for cell in column:
+                try:
+                    if len(str(cell.value)) > max_length:
+                        max_length = len(str(cell.value))
+                except:
+                    pass
+            adjusted_width = min(max_length + 2, 50)  # 最大50文字に制限
+            worksheet.column_dimensions[column_letter].width = adjusted_width
+    
+    print(f"Excel ファイルが生成されました: {output_path}")
+    print(f"総行数: {len(df)}")
+    print(f"企業数: {df['company_name'].n_unique()}")
+    
+    return df
+
+def _format_categories(categories: List[str]) -> str:
+    """スコープ3カテゴリリストを文字列に変換"""
+    if not categories:
+        return ''
+    return '; '.join(categories)
+
+def _get_schema() -> Dict[str, pl.DataType]:
+    """データフレームのスキーマを定義"""
+    return {
+        'company_name': pl.Utf8,
+        'report_year': pl.Int64,
+        'scope_pattern': pl.Utf8,
+        'data_type': pl.Utf8,
+        'extraction_notes': pl.Utf8,
+        'is_verified': pl.Boolean,
+        'verification_organization': pl.Utf8,
+        'verification_standard': pl.Utf8,
+        'verification_evidence': pl.Utf8,
+        'amount': pl.Float64,
+        'unit': pl.Utf8,
+        'year': pl.Int64,
+        'scope3_categories': pl.Utf8,
+        'evidence': pl.Utf8,
+        'reduction_rate': pl.Float64,
+        'reduction_amount': pl.Float64,
+        'reduction_unit': pl.Utf8,
+        'baseline_year': pl.Int64,
+        'achievement_year': pl.Int64,
+        'target_year': pl.Int64,
+        'is_increase': pl.Boolean,
+        'target_rate': pl.Float64,
+        'is_carbon_neutral': pl.Boolean
+    }
+
+def load_and_convert_from_file(json_file_path: str, output_path: str = None) -> pl.DataFrame:
+    """
+    JSONファイルからデータを読み込んでExcelに変換
+    
+    Args:
+        json_file_path: 入力JSONファイルのパス
+        output_path: 出力Excelファイルのパス（Noneの場合は自動生成）
+    
+    Returns:
+        pl.DataFrame: 変換されたPolarsデータフレーム
+    """
+    if output_path is None:
+        output_path = Path(json_file_path).stem + "_converted.xlsx"
+    
+    with open(json_file_path, 'r', encoding='utf-8') as f:
+        json_data = json.load(f)
+    
+    # 単一のオブジェクトの場合はリストに変換
+    if isinstance(json_data, dict):
+        json_data = [json_data]
+    
+    return convert_ghg_json_to_excel(json_data, output_path)
+
+# 使用例
+if __name__ == "__main__":
+    # サンプルデータ
+    sample_data = [
+        {
+            "company_name": "三菱商事",
+            "report_year": 2023,
+            "scope_data": [
+                {
+                    "scope_pattern": "スコープ1",
+                    "emissions": [
+                        {
+                            "amount": 1234.5,
+                            "unit": "t-CO2",
+                            "year": 2023,
+                            "scope3_categories": [],
+                            "evidence": "当社のスコープ1排出量は1,234.5t-CO2でした。"
+                        }
+                    ],
+                    "reduction_results": [
+                        {
+                            "reduction_rate": 15.0,
+                            "baseline_year": 2020,
+                            "achievement_year": 2023,
+                            "scope3_categories": [],
+                            "is_increase": False,
+                            "evidence": "2020年比で15%の削減を達成しました。"
+                        }
+                    ],
+                    "reduction_targets": [
+                        {
+                            "target_rate": 30.0,
+                            "baseline_year": 2020,
+                            "target_year": 2030,
+                            "scope3_categories": [],
+                            "is_carbon_neutral": False,
+                            "evidence": "2030年までに2020年比30%削減を目指します。"
+                        }
+                    ],
+                    "third_party_verification": {
+                        "is_verified": True,
+                        "verification_organization": "第三者認証機関A",
+                        "verification_standard": "ISO14064",
+                        "evidence": "第三者認証機関Aによる検証を受けています。"
+                    }
+                },
+                {
+                    "scope_pattern": "スコープ2",
+                    "emissions": [
+                        {
+                            "amount": 2345.6,
+                            "unit": "t-CO2",
+                            "year": 2023,
+                            "scope3_categories": [],
+                            "evidence": "スコープ2排出量は2,345.6t-CO2でした。"
+                        }
+                    ],
+                    "reduction_results": [],
+                    "reduction_targets": [],
+                    "third_party_verification": None
+                }
+            ],
+            "extraction_notes": "全データ抽出完了"
+        }
+    ]
+    
+    # 変換実行
+    df = convert_ghg_json_to_excel(sample_data, "sample_ghg_data.xlsx")
+    print("\nデータフレームの先頭5行:")
+    print(df.head())
