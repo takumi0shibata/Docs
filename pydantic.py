@@ -63,14 +63,14 @@
 from __future__ import annotations
 from typing import List, Optional, Literal
 from decimal import Decimal
-from pydantic import BaseModel, Field, validator, root_validator, conint, condecimal
+from pydantic import BaseModel, Field, validator, root_validator
 
-ScopePattern = Literal["SCOPE1", "SCOPE2", "SCOPE1_2", "SCOPE3", "SCOPE1_2_3", "NONE"]
-ScopeCoverage = Literal["SCOPE1", "SCOPE2", "SCOPE1_2", "SCOPE3", "SCOPE1_2_3", "UNSPECIFIED"]
-TargetType = Literal["ABSOLUTE", "INTENSITY", "NET_ZERO", "CARBON_NEUTRAL", "OTHER"]
-SourceType = Literal["text", "table_csv"]
-Scope2Method = Literal["location", "market", "unspecified"]
-Direction = Literal["decrease", "increase"]
+ScopePattern   = Literal["SCOPE1", "SCOPE2", "SCOPE1_2", "SCOPE3", "SCOPE1_2_3", "NONE"]
+ScopeCoverage  = Literal["SCOPE1", "SCOPE2", "SCOPE1_2", "SCOPE3", "SCOPE1_2_3", "UNSPECIFIED"]
+TargetType     = Literal["ABSOLUTE", "INTENSITY", "NET_ZERO", "CARBON_NEUTRAL", "OTHER"]
+SourceType     = Literal["text", "table_csv"]
+Scope2Method   = Literal["location", "market", "unspecified"]
+Direction      = Literal["decrease", "increase"]
 
 class Evidence(BaseModel):
     text_snippet: str = Field(..., description="根拠となる短い引用（最大300文字程度）")
@@ -85,66 +85,60 @@ class DisclosurePattern(BaseModel):
     evidence: List[Evidence]
 
 class EmissionRecord(BaseModel):
-    scope: ScopeCoverage = Field(..., description="値が示す対象スコープ（合計/内訳/未特定）")
+    scope: ScopeCoverage
     year_label: Optional[str] = Field(None, description="年度・年の表記（例：2023年度, FY2023, 2022年）")
-    value: condecimal(gt=Decimal("0")) = Field(..., description="数値（raw単位の値）")
+    value: Decimal = Field(..., gt=0, description="数値（raw単位の値）")
     unit_raw: str = Field(..., description="原文の単位（例：t-CO2, tCO2e, 千t-CO2e, 万t など）")
-    value_tco2e_normalized: Optional[condecimal(gt=Decimal("0"))] = Field(
-        None, description="t-CO2eへ正規化した値（可能なら）"
-    )
-    gas_basis: Optional[Literal["CO2", "CO2e", "unspecified"]] = Field(
-        None, description="CO2のみかCO2eか"
-    )
-    scope3_category_no: Optional[conint(ge=1, le=15)] = Field(
-        None, description="Scope3カテゴリ番号（1〜15）"
-    )
-    category_label: Optional[str] = Field(None, description="Scope3カテゴリの原文ラベル")
-    category_other_note: Optional[str] = Field(None, description="番号が不明な場合の注記")
-    scope2_method: Optional[Scope2Method] = Field(None, description="Scope2方式")
+    value_tco2e_normalized: Optional[Decimal] = Field(None, gt=0, description="t-CO2e正規化値（可能なら）")
+    gas_basis: Optional[Literal["CO2", "CO2e", "unspecified"]] = None
+    scope3_category_no: Optional[int] = Field(None, ge=1, le=15, description="Scope3カテゴリ番号（1〜15）")
+    category_label: Optional[str] = None
+    category_other_note: Optional[str] = None
+    scope2_method: Optional[Scope2Method] = None
     evidence: List[Evidence]
 
 class ReductionRecord(BaseModel):
     scope_coverage: ScopeCoverage
-    baseline_year_label: Optional[str] = Field(None, description="基準年の表記")
-    achievement_year_label: Optional[str] = Field(None, description="達成年の表記")
-    reduction_rate_percent: Optional[condecimal(ge=Decimal("0"), le=Decimal("100"))] = Field(
-        None, description="削減率[%]（増加は0にせずdirectionで表現）"
-    )
-    change_direction: Optional[Direction] = Field(None, description="decrease または increase")
-    change_amount_value: Optional[condecimal(gt=Decimal("0"))] = Field(
-        None, description="増減量の数値（raw単位）"
-    )
-    change_amount_unit_raw: Optional[str] = Field(None, description="増減量の原文単位")
-    change_amount_tco2e_normalized: Optional[condecimal(gt=Decimal("0"))] = Field(
-        None, description="増減量のt-CO2e正規化値（可能なら）"
-    )
+    baseline_year_label: Optional[str] = None
+    achievement_year_label: Optional[str] = None
+    reduction_rate_percent: Optional[Decimal] = Field(None, ge=0, le=100)
+    change_direction: Optional[Direction] = None
+    change_amount_value: Optional[Decimal] = Field(None, gt=0)
+    change_amount_unit_raw: Optional[str] = None
+    change_amount_tco2e_normalized: Optional[Decimal] = Field(None, gt=0)
     evidence: List[Evidence]
 
 class InterimTarget(BaseModel):
     target_year_label: Optional[str] = None
-    reduction_rate_percent: Optional[condecimal(ge=Decimal("0"), le=Decimal("100"))] = None
-    target_amount_value: Optional[condecimal(gt=Decimal("0"))] = None
+    reduction_rate_percent: Optional[Decimal] = Field(None, ge=0, le=100)
+    target_amount_value: Optional[Decimal] = Field(None, gt=0)
     target_amount_unit_raw: Optional[str] = None
-    target_amount_tco2e_normalized: Optional[condecimal(gt=Decimal("0"))] = None
+    target_amount_tco2e_normalized: Optional[Decimal] = Field(None, gt=0)
     evidence: List[Evidence] = Field(default_factory=list)
 
 class TargetRecord(BaseModel):
     scope_coverage: ScopeCoverage
     baseline_year_label: Optional[str] = None
     target_year_label: Optional[str] = None
-    reduction_rate_percent: Optional[condecimal(ge=Decimal("0"), le=Decimal("100"))] = None
-    target_amount_value: Optional[condecimal(gt=Decimal("0"))] = None
+    reduction_rate_percent: Optional[Decimal] = Field(None, ge=0, le=100)
+    target_amount_value: Optional[Decimal] = Field(None, gt=0)
     target_amount_unit_raw: Optional[str] = None
-    target_amount_tco2e_normalized: Optional[condecimal(gt=Decimal("0"))] = None
+    target_amount_tco2e_normalized: Optional[Decimal] = Field(None, gt=0)
     target_type: TargetType = "ABSOLUTE"
     net_zero_label: Optional[str] = Field(
         None, description="原文の『ネットゼロ』『カーボンニュートラル』等の語"
     )
-    scope3_categories_covered: Optional[List[conint(ge=1, le=15)]] = Field(
-        None, description="対象がScope3のとき、該当カテゴリを列挙（不明なら空）"
+    scope3_categories_covered: Optional[List[int]] = Field(
+        None, description="対象がScope3のとき、該当カテゴリ（1〜15）を列挙"
     )
     interim_targets: List[InterimTarget] = Field(default_factory=list)
     evidence: List[Evidence]
+
+    @validator("scope3_categories_covered", each_item=True)
+    def _check_scope3_list(cls, v):
+        if v is not None and not (1 <= v <= 15):
+            raise ValueError("scope3_categories_covered は 1〜15")
+        return v
 
 class AbsenceRecord(BaseModel):
     scope_coverage: ScopeCoverage
@@ -158,7 +152,7 @@ class DocumentMetadata(BaseModel):
 
 class ExtractionResult(BaseModel):
     metadata: Optional[DocumentMetadata] = None
-    scope_patterns: List[DisclosurePattern] = Field(..., description="本文に現れた全パターン")
+    scope_patterns: List[DisclosurePattern]
     emissions: List[EmissionRecord] = Field(default_factory=list)
     reductions: List[ReductionRecord] = Field(default_factory=list)
     targets: List[TargetRecord] = Field(default_factory=list)
@@ -166,12 +160,20 @@ class ExtractionResult(BaseModel):
 
     @root_validator
     def ensure_evidence_nonempty(cls, values):
-        # 主要リストは各要素が最低1つのevidenceを持つこと
         for key in ["scope_patterns", "emissions", "reductions", "targets", "disclosure_absence"]:
             for item in values.get(key, []):
                 if not getattr(item, "evidence", []):
                     raise ValueError(f"{key} の要素に evidence が必要です")
         return values
+
+    # 追加の安全バリデーション（任意）
+    @validator(
+        "emissions", "reductions", "targets", pre=True, each_item=False
+    )
+    def _coerce_decimals(cls, v):
+        # 文字列数値→Decimalの自動変換はpydanticに任せればOKだが、
+        # 必要に応じてカンマ除去などの前処理をここで入れてもよい。
+        return v
 ```
 
 ---
