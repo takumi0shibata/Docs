@@ -1,256 +1,185 @@
-以下は、有価証券報告書をテキスト化した単一のTXTです（ページや表IDはありません）。
-本文中に「表」が埋め込まれている場合があります（CSV/TSV/複数スペース/縦線などの擬似表行）。
+了解です。以下に「そのまま使える抽出プロンプト（日本語）」と「Pydanticスキーマ（Python）」を用意しました。
+テキストは1本の.txtで、表はCSV文字列として本文に埋め込まれている想定です。抽出の“完全性・網羅性”を最優先し、重複や曖昧さも失わない設計にしています（証拠断片・文字位置も保持）。
 
-あなたのタスクは、本文から下記の最小情報を年度すべて＆該当スコープすべてについて
-完全に漏れなく抽出し、指定のPydanticスキーマに**完全準拠**した**JSONのみ**を返すことです。
-各レコードには**抽出根拠（Evidence）**を必ず含めます。
+---
 
-【入力メタ】
-発行体名: {{issuer}}
+# 抽出プロンプト（LLM用・日本語）
 
-【本文（TXT全量。先頭からの文字位置=0起点）】
-{{full_txt}}
+あなたは日本の有価証券報告書（サステナビリティ章）の温室効果ガス（GHG）関連開示から、指定スキーマに沿って**網羅的**に情報を抽出するシステムです。
+入力は**プレーンテキスト（.txt）**で、表は**CSV形式の文字列**で本文中に埋め込まれています（ページ情報はありません）。
+**出力は必ず有効なJSON**で、指定のPydanticスキーマに一致させてください。自由記述や説明文、推論過程は**一切出力しない**でください。
 
-【抽出対象（この4種類以外は出力禁止）】
-1) 開示スコープ項目の組み合わせ（disclosure_items）
-   - 本文で実際に確認できた“開示項目”をすべて列挙（順不同・重複なし）
-     * "S1"                … scope 1 を開示
-     * "S2"                … scope 2 を開示
-     * "S1_PLUS_2"         … scope 1 と scope 2 の**合計**を開示（別名：S1+S2/自社排出量/Scope1,2合計 など）
-     * "S3"                … scope 3 を開示（合計またはカテゴリ別いずれでも可）
-     * "S1_PLUS_2_PLUS_3"  … scope 1, 2, 3 の**合計**を開示（別名：総排出量（S1-3） など）
-     * "NONE"              … **開示なし**（GHG排出量/削減率/削減目標のいずれも本文で確認できない）
-   - 重要ルール:
-     - "NONE" は排他的（["NONE"] のみ許容）。この場合、emissions/reductions/targets は空配列。
-     - "NONE" を選ぶ根拠は次のいずれか：
-       ① 明示の未開示記述（例：未開示/非開示/未算定/記載なし/該当なし/対象外 等）がある
-       ② 上記の開示項目や関連数値・率・目標の**証跡が本文に一切見つからない**
+## 抽出範囲（網羅）
 
-2) GHG排出量（emissions）
-   - レコード: { scope, fiscal_year_label, value, unit, (S3なら s3_category_code/name), evidence[] }
-   - scope は S1/S2/S3/S1_PLUS_2/S1_PLUS_2_PLUS_3 のいずれか。
-   - 年度は原文ラベル（例: "2024年3月期", "FY2023"）。値は数値化（カンマ除去）、単位は原文どおり。
-   - S3カテゴリがあれば code(1–15)/name を可能な限り付与。総量のみでも可。
-   - **本文で確認できたすべての年度**を網羅。
+1. **開示スコープパターン**：以下のいずれかの項目が本文に出現したら、**出現した分すべて**を列挙してください（同一文書内に複数パターンが併存する場合があります）。
 
-3) GHG削減率（reductions）
-   - レコード: { scope, baseline_year, achievement_year, reduction_rate, evidence[] }
-   - reduction_rate は実数（割合）で -1〜1。10%削減→0.10、5%増→-0.05。
-   - 率が明記されない場合、同一 scope の排出量から
-     (baseline年度の値 - achievement年度の値) / baseline年度の値 で算出してよい（その根拠も evidence に含める）。
+* `SCOPE1`（Scope1を個別開示）
+* `SCOPE2`（Scope2を個別開示）
+* `SCOPE1_2`（Scope1+2合計を開示）
+* `SCOPE3`（Scope3を開示）
+* `SCOPE1_2_3`（Scope1+2+3合計を開示）
+* `NONE`（対象スコープが**開示なし**であることを示す明示的記述がある場合。例：「Scope3は開示していない」）
 
-4) GHG削減目標（targets）
-   - レコード: { scopes[], base_year, target_year, reduction_rate|null, goal_kind, evidence[] }
-   - scopes は対象スコープ配列（S1/S2/S3/S1_PLUS_2/S1_PLUS_2_PLUS_3）。
-   - goal_kind: "reduction" | "carbon_neutral" | "net_zero"
-     - 「カーボンニュートラル/カーボンゼロ」→ carbon_neutral
-     - 「ネットゼロ/実質ゼロ」→ net_zero
-     - 割合目標のみ → reduction（この場合 reduction_rate は必須）
-   - base_year < target_year。reduction_rate がある場合は 0〜1。
+> 補足：Scope1/2単独値と、Scope1+2合計値の両方が載る場合があるため、**併存を許容**してください。同様に、Scope1+2+3合計と各内訳が併存することもあります。
 
-【Evidence（根拠）の作り方】
-- 各レコードの evidence は **1件以上**。次の形式で作成：
-  * quote … 原文からの**短い完全一致抜粋**（5〜180文字、改変・要約禁止）
-  * char_start / char_end … TXT先頭からの**0始まり文字位置**（どちらも整数）。少なくとも char_* か line_* を指定。
-  * line_start / line_end … TXTの**1始まり行番号**（改行カウントで算出）。少なくとも line_* か char_* を指定。
-  * is_table_like … その証跡が表構造（CSV/TSV/複数スペース/縦線）に見える場合は true、通常段落なら false。
-  * notes … 解析補足（例：列見出しとセル対応、単位の読み取り等）
-- 削減率を「排出量から算出」した場合は、**基準年と達成年の値それぞれの証跡**を evidence に**複数**入れること。
+2. **GHG排出量（Emissions）**：見つかったものを**年度ごと・スコープごと・（該当時）Scope3カテゴリごとに**すべて抽出。
 
-【擬似表の取り扱い】
-- 年度列ヘッダ（例：「項目,2023年3月期,2024年3月期」）を検出し、行の項目（Scope1/Scope2/合計/Scope3等）と
-  列の年度を対応付けてセル値を解釈してよい。
-- 「合計/計/S1+S2/Scope1+2/自社排出量」→ S1_PLUS_2、
-  「S1+S2+S3/総排出量（S1-3）」→ S1_PLUS_2_PLUS_3 に正規化してよい。
-- 単位は原文のまま unit に格納（数値は value に数値型で）。
+   * フィールド：値、単位、生年度（会計年度/暦年の表現は原文どおり）、スコープ、Scope3カテゴリ（1〜15、名称も）、Scope2方式（location-based/market-based/不明）、根拠断片。
+   * 単位は原文（例：`t-CO2`, `tCO2e`, `千t-CO2e`, `万t`など）を**unit\_raw**に保持し、**value\_tco2e\_normalized**にトンCO2eへ正規化（`千t`=×1,000、`万t`=×10,000、`kt`=×1,000、`Mt`=×1,000,000）。CO2のみの場合は`gas_basis="CO2"`、CO2eなら`"CO2e"`。
 
-【完全網羅と禁止事項】
-- 抽出できた**すべての年度**を漏れなく列挙（重複年度は別レコードで可）。
-- 推測・補完禁止。見つからないものは出力しない。
-- "NONE" の場合は emissions/reductions/targets を空配列にし、disclosure_absence を必ず出力。
-- 余計な説明やマークダウンは禁止。**JSONのみ**を返す。
-- 出力は Pydantic スキーマ "GHGMinimalExtractionV3" に**完全準拠**。
+3. **GHG削減率（達成実績としての増減）**：
 
+   * フィールド：基準年、達成年、削減（もしくは増加）率\[%]、増減量（値+単位、正規化値）、対象スコープ（上記パターンのいずれか/複数可）、根拠断片。
+   * 削減方向は`"decrease"`/`"increase"`で明示。
 
-from typing import List, Optional, Literal, Set
-from pydantic import BaseModel, Field, StrictFloat, StrictInt, root_validator, validator
+4. **GHG削減目標（Target）**：
 
-# 公表され得る5項目 + 開示なし
-Scope = Literal['S1', 'S2', 'S3', 'S1_PLUS_2', 'S1_PLUS_2_PLUS_3']
-DisclosureItem = Literal['S1', 'S2', 'S3', 'S1_PLUS_2', 'S1_PLUS_2_PLUS_3', 'NONE']
-GoalKind = Literal['reduction', 'carbon_neutral', 'net_zero']
+   * フィールド：基準年、目標年、削減率\[%]または目標量（値+単位、正規化値）、対象スコープ、`target_type`（`ABSOLUTE`/`INTENSITY`/`NET_ZERO`/`CARBON_NEUTRAL`/`OTHER`）、`net_zero_label`（原文に「ネットゼロ」「カーボンニュートラル」等があればその語）、根拠断片。
+   * 中間目標が複数あれば**すべて**列挙。対象スコープが曖昧な場合は`scope_coverage="UNSPECIFIED"`とし、根拠に当該文を入れてください。
+
+5. **開示なし（Absence）**：
+
+   * 特定スコープについて**開示なしを示す明文**（例：「Scope3は計測・開示していない」）があれば、`disclosure_absence`に記録し、根拠を付与。
+
+## 重要な指示
+
+* **重複排除をしないで**ください。同じ年・同じスコープでも、出所（本文/別表、location/market方式別など）が異なる場合は**すべて残す**。
+* 数値は半角・全角、カンマ、括弧、注記（※）等に頑健に対応。日本語数量表現（億/万）や「▲」「△」などのマイナス表現も解釈。
+* 年度は文字列として原文を保持（例：「2023年度」「FY2023」「2022年」）。
+* 文字位置は**入力テキスト全体の先頭からの0始まりインデックス**で`char_span_start`/`char_span_end`に格納。表（CSV文字列）由来なら`source_type="table_csv"`にし、`table_excerpt`にCSVの先頭3〜5行をそのまま入れる。
+* **根拠（evidence）を必須**にしてください（短い引用と文字位置）。
+* Scope3カテゴリは数字1〜15を推定し、原文の日本語ラベル（例：「カテゴリ1 購入した製品・サービス」）も`category_label`に保存。数字が不明なら`category_other_note`に原文を入れてください。
+* Scope2は`scope2_method`に`"location"`/`"market"`/`"unspecified"`のいずれか。
+* 出力は**指定スキーマのJSONのみ**。それ以外の文字を出力しないこと。
+
+入力：有報サステナ章のプレーンテキスト全量（表はCSV文字列として本文に内包）
+出力：指定スキーマに適合するJSON
+
+---
+
+# Pydanticスキーマ（Python / pydantic v1想定）
+
+```python
+from __future__ import annotations
+from typing import List, Optional, Literal
+from decimal import Decimal
+from pydantic import BaseModel, Field, validator, root_validator, conint, condecimal
+
+ScopePattern = Literal["SCOPE1", "SCOPE2", "SCOPE1_2", "SCOPE3", "SCOPE1_2_3", "NONE"]
+ScopeCoverage = Literal["SCOPE1", "SCOPE2", "SCOPE1_2", "SCOPE3", "SCOPE1_2_3", "UNSPECIFIED"]
+TargetType = Literal["ABSOLUTE", "INTENSITY", "NET_ZERO", "CARBON_NEUTRAL", "OTHER"]
+SourceType = Literal["text", "table_csv"]
+Scope2Method = Literal["location", "market", "unspecified"]
+Direction = Literal["decrease", "increase"]
 
 class Evidence(BaseModel):
-    quote: str = Field(..., min_length=5, max_length=180,
-                       description="原文からの短い完全一致抜粋（改変なし）")
-    # 文字位置か行番号のどちらか（または両方）を指定
-    char_start: Optional[int] = Field(None, ge=0, description="TXT先頭からの0始まり文字位置")
-    char_end: Optional[int] = Field(None, ge=0, description="TXT先頭からの0始まり文字位置（終端）")
-    line_start: Optional[int] = Field(None, ge=1, description="1始まりの開始行番号")
-    line_end: Optional[int] = Field(None, ge=1, description="1始まりの終了行番号")
-    is_table_like: Optional[bool] = Field(False, description="CSV/TSV/複数スペース/縦線など表構造に見える場合は True")
-    notes: Optional[str] = Field(None, description="列見出し対応や単位読み取りなど補足")
+    text_snippet: str = Field(..., description="根拠となる短い引用（最大300文字程度）")
+    char_span_start: Optional[int] = Field(None, description="引用開始の文字位置（0始まり）")
+    char_span_end: Optional[int] = Field(None, description="引用終了の文字位置（0始まり、含まない）")
+    source_type: SourceType = Field("text", description="本文テキストかCSV表か")
+    table_excerpt: Optional[str] = Field(None, description="表由来の場合、CSVの先頭数行")
 
-    class Config:
-        extra = 'forbid'
+class DisclosurePattern(BaseModel):
+    pattern: ScopePattern
+    note: Optional[str] = Field(None, description="判定補足（例：同一箇所で複数パターン併存など）")
+    evidence: List[Evidence]
 
-    @root_validator
-    def _require_positions(cls, values):
-        cs, ce = values.get('char_start'), values.get('char_end')
-        ls, le = values.get('line_start'), values.get('line_end')
-        if (cs is None or ce is None) and (ls is None or le is None):
-            raise ValueError("Evidence には char_start/char_end または line_start/line_end の少なくとも一方を指定してください")
-        if cs is not None and ce is not None and ce < cs:
-            raise ValueError("char_end は char_start 以上である必要があります")
-        if ls is not None and le is not None and le < ls:
-            raise ValueError("line_end は line_start 以上である必要があります")
-        return values
+class EmissionRecord(BaseModel):
+    scope: ScopeCoverage = Field(..., description="値が示す対象スコープ（合計/内訳/未特定）")
+    year_label: Optional[str] = Field(None, description="年度・年の表記（例：2023年度, FY2023, 2022年）")
+    value: condecimal(gt=Decimal("0")) = Field(..., description="数値（raw単位の値）")
+    unit_raw: str = Field(..., description="原文の単位（例：t-CO2, tCO2e, 千t-CO2e, 万t など）")
+    value_tco2e_normalized: Optional[condecimal(gt=Decimal("0"))] = Field(
+        None, description="t-CO2eへ正規化した値（可能なら）"
+    )
+    gas_basis: Optional[Literal["CO2", "CO2e", "unspecified"]] = Field(
+        None, description="CO2のみかCO2eか"
+    )
+    scope3_category_no: Optional[conint(ge=1, le=15)] = Field(
+        None, description="Scope3カテゴリ番号（1〜15）"
+    )
+    category_label: Optional[str] = Field(None, description="Scope3カテゴリの原文ラベル")
+    category_other_note: Optional[str] = Field(None, description="番号が不明な場合の注記")
+    scope2_method: Optional[Scope2Method] = Field(None, description="Scope2方式")
+    evidence: List[Evidence]
 
-class Emission(BaseModel):
-    scope: Scope = Field(..., description="S1/S2/S3/S1_PLUS_2/S1_PLUS_2_PLUS_3")
-    fiscal_year_label: str = Field(..., description='例: "2024年3月期", "FY2023" など原文ラベル')
-    value: StrictFloat = Field(..., ge=0.0, description="数値（カンマ除去済み）")
-    unit: str = Field(..., description='例: "t-CO2e", "千t-CO2e"（原文のまま）')
-    # Scope 3 の場合のみ任意
-    s3_category_code: Optional[StrictInt] = Field(None, ge=1, le=15)
-    s3_category_name: Optional[str] = None
-    # 根拠（1件以上）
-    evidence: List[Evidence] = Field(..., min_items=1)
+class ReductionRecord(BaseModel):
+    scope_coverage: ScopeCoverage
+    baseline_year_label: Optional[str] = Field(None, description="基準年の表記")
+    achievement_year_label: Optional[str] = Field(None, description="達成年の表記")
+    reduction_rate_percent: Optional[condecimal(ge=Decimal("0"), le=Decimal("100"))] = Field(
+        None, description="削減率[%]（増加は0にせずdirectionで表現）"
+    )
+    change_direction: Optional[Direction] = Field(None, description="decrease または increase")
+    change_amount_value: Optional[condecimal(gt=Decimal("0"))] = Field(
+        None, description="増減量の数値（raw単位）"
+    )
+    change_amount_unit_raw: Optional[str] = Field(None, description="増減量の原文単位")
+    change_amount_tco2e_normalized: Optional[condecimal(gt=Decimal("0"))] = Field(
+        None, description="増減量のt-CO2e正規化値（可能なら）"
+    )
+    evidence: List[Evidence]
 
-    class Config:
-        extra = 'forbid'
+class InterimTarget(BaseModel):
+    target_year_label: Optional[str] = None
+    reduction_rate_percent: Optional[condecimal(ge=Decimal("0"), le=Decimal("100"))] = None
+    target_amount_value: Optional[condecimal(gt=Decimal("0"))] = None
+    target_amount_unit_raw: Optional[str] = None
+    target_amount_tco2e_normalized: Optional[condecimal(gt=Decimal("0"))] = None
+    evidence: List[Evidence] = Field(default_factory=list)
 
-class Reduction(BaseModel):
-    scope: Scope
-    baseline_year: StrictInt = Field(..., ge=1900, le=2200)
-    achievement_year: StrictInt = Field(..., ge=1900, le=2200)
-    reduction_rate: StrictFloat = Field(..., ge=-1.0, le=1.0,
-        description="(baseline - achievement) / baseline。10%削減=0.10、5%増=-0.05")
-    # 根拠（1件以上。算出の場合は基準年と達成年の値それぞれの証跡を含める）
-    evidence: List[Evidence] = Field(..., min_items=1)
+class TargetRecord(BaseModel):
+    scope_coverage: ScopeCoverage
+    baseline_year_label: Optional[str] = None
+    target_year_label: Optional[str] = None
+    reduction_rate_percent: Optional[condecimal(ge=Decimal("0"), le=Decimal("100"))] = None
+    target_amount_value: Optional[condecimal(gt=Decimal("0"))] = None
+    target_amount_unit_raw: Optional[str] = None
+    target_amount_tco2e_normalized: Optional[condecimal(gt=Decimal("0"))] = None
+    target_type: TargetType = "ABSOLUTE"
+    net_zero_label: Optional[str] = Field(
+        None, description="原文の『ネットゼロ』『カーボンニュートラル』等の語"
+    )
+    scope3_categories_covered: Optional[List[conint(ge=1, le=15)]] = Field(
+        None, description="対象がScope3のとき、該当カテゴリを列挙（不明なら空）"
+    )
+    interim_targets: List[InterimTarget] = Field(default_factory=list)
+    evidence: List[Evidence]
 
-    class Config:
-        extra = 'forbid'
+class AbsenceRecord(BaseModel):
+    scope_coverage: ScopeCoverage
+    description: str = Field(..., description="『開示なし』を示す原文趣旨")
+    evidence: List[Evidence]
 
-    @root_validator
-    def _years_order(cls, values):
-        b, a = values.get('baseline_year'), values.get('achievement_year')
-        if b is not None and a is not None and b > a:
-            raise ValueError("achievement_year は baseline_year 以上である必要があります")
-        return values
+class DocumentMetadata(BaseModel):
+    issuer_name: Optional[str] = None
+    fiscal_year_label: Optional[str] = None
+    notes: Optional[str] = None
 
-class Target(BaseModel):
-    scopes: List[Scope] = Field(..., min_items=1, description="目標対象のスコープ群")
-    base_year: StrictInt = Field(..., ge=1900, le=2200)
-    target_year: StrictInt = Field(..., ge=1900, le=2200)
-    reduction_rate: Optional[StrictFloat] = Field(None, ge=0.0, le=1.0,
-        description="0.5 は 50%削減。割合記載が無ければ null")
-    goal_kind: GoalKind
-    # 根拠（1件以上）
-    evidence: List[Evidence] = Field(..., min_items=1)
-
-    class Config:
-        extra = 'forbid'
-
-    @root_validator
-    def _years_order(cls, values):
-        b, t = values.get('base_year'), values.get('target_year')
-        if b is not None and t is not None and b >= t:
-            raise ValueError("base_year は target_year より小さい必要があります")
-        return values
-
-    @root_validator
-    def _rate_required_for_reduction(cls, values):
-        kind = values.get('goal_kind')
-        rate = values.get('reduction_rate')
-        if kind == 'reduction' and rate is None:
-            raise ValueError("goal_kind='reduction' の場合、reduction_rate は必須です")
-        return values
-
-class DisclosureEvidence(BaseModel):
-    item: DisclosureItem = Field(..., description='NONE 以外の開示項目')
-    evidence: List[Evidence] = Field(..., min_items=1)
-
-    class Config:
-        extra = 'forbid'
-
-class DisclosureAbsence(BaseModel):
-    reason: Literal['explicit_statement', 'no_traces_found'] = Field(...,
-        description="明示の未開示記述があるか（explicit_statement）、痕跡が無いか（no_traces_found）")
-    # explicit_statement の場合は引用必須
-    evidence: Optional[List[Evidence]] = Field(None, description="未開示を示す文言の証跡（ある場合）")
-    notes: Optional[str] = Field(None, description="用いた探索語や確認範囲など")
-
-    class Config:
-        extra = 'forbid'
-
-class GHGMinimalExtractionV3(BaseModel):
-    issuer: str = Field(..., description="発行体名")
-    disclosure_items: List[DisclosureItem] = Field(..., min_items=1,
-        description='本文で確認できた開示項目の組み合わせ。開示なしは ["NONE"] のみ許容。')
-
-    # 開示があった項目ごとの根拠（NONE は含めない）
-    disclosure_evidence: Optional[List[DisclosureEvidence]] = Field(None)
-
-    # NONE の場合の理由と根拠
-    disclosure_absence: Optional[DisclosureAbsence] = Field(None)
-
-    emissions: List[Emission] = Field(default_factory=list)
-    reductions: List[Reduction] = Field(default_factory=list)
-    targets: List[Target] = Field(default_factory=list)
-
-    class Config:
-        extra = 'forbid'
-        anystr_strip_whitespace = True
-        validate_assignment = True
-
-    @validator('disclosure_items')
-    def _unique_items(cls, v):
-        if len(v) != len(set(v)):
-            raise ValueError("disclosure_items に重複があります")
-        return v
+class ExtractionResult(BaseModel):
+    metadata: Optional[DocumentMetadata] = None
+    scope_patterns: List[DisclosurePattern] = Field(..., description="本文に現れた全パターン")
+    emissions: List[EmissionRecord] = Field(default_factory=list)
+    reductions: List[ReductionRecord] = Field(default_factory=list)
+    targets: List[TargetRecord] = Field(default_factory=list)
+    disclosure_absence: List[AbsenceRecord] = Field(default_factory=list)
 
     @root_validator
-    def _consistency(cls, values):
-        items: List[DisclosureItem] = values.get('disclosure_items') or []
-        emissions = values.get('emissions') or []
-        reductions = values.get('reductions') or []
-        targets = values.get('targets') or []
-        de = values.get('disclosure_evidence') or []
-        absence = values.get('disclosure_absence')
-
-        if 'NONE' in items:
-            # ["NONE"] のみ許容、データは全て空、欠如理由が必要
-            if len(items) != 1:
-                raise ValueError('disclosure_items に "NONE" を含む場合、["NONE"] のみ許容されます')
-            if emissions or reductions or targets:
-                raise ValueError('disclosure_items=["NONE"] の場合、emissions/reductions/targets は空でなければなりません')
-            if de:
-                raise ValueError('disclosure_items=["NONE"] の場合、disclosure_evidence は空/未指定である必要があります')
-            if absence is None:
-                raise ValueError('disclosure_items=["NONE"] の場合、disclosure_absence を必ず指定してください')
-            # explicit_statement の場合は証跡を推奨（あれば1件以上）
-            if absence.reason == 'explicit_statement' and not absence.evidence:
-                raise ValueError('disclosure_absence.reason="explicit_statement" の場合、未開示を示す Evidence を1件以上含めてください')
-            return values
-
-        # "NONE" 以外の場合：データに出てくる全スコープが disclosure_items に包含されていること
-        data_scopes: Set[Scope] = set(e.scope for e in emissions)
-        data_scopes |= set(r.scope for r in reductions)
-        for t in targets:
-            data_scopes |= set(t.scopes)
-
-        if not set(items).issuperset(data_scopes):
-            missing = sorted(list(data_scopes - set(items)))
-            raise ValueError(f"disclosure_items がデータに登場するスコープ {missing} を含んでいません")
-
-        # disclosure_evidence が items（NONE以外）をカバーしていること
-        if not de:
-            raise ValueError('開示がある場合、disclosure_evidence を指定してください')
-        de_items = {d.item for d in de}
-        needed = set(i for i in items if i != 'NONE')
-        if not de_items.issuperset(needed):
-            missing = sorted(list(needed - de_items))
-            raise ValueError(f"disclosure_evidence に {missing} の根拠が不足しています")
-
+    def ensure_evidence_nonempty(cls, values):
+        # 主要リストは各要素が最低1つのevidenceを持つこと
+        for key in ["scope_patterns", "emissions", "reductions", "targets", "disclosure_absence"]:
+            for item in values.get(key, []):
+                if not getattr(item, "evidence", []):
+                    raise ValueError(f"{key} の要素に evidence が必要です")
         return values
+```
+
+---
+
+## 使い方のヒント（超簡潔）
+
+* LLMへは上の**抽出プロンプト**を提示し、入力にサステナ章の.txt全文を与えます（CSV表も本文中に含まれている前提）。
+* 返ってきたJSONを上記Pydanticでバリデート。`value_tco2e_normalized`や`change_amount_tco2e_normalized`は、前処理/後処理で補完してもOKです（LLMが直接計算できない場合に備えて）。
+* **重複は保持**し、後段で統合が必要ならキー（`year_label, scope, scope3_category_no, scope2_method`等）で整備してください。
+
+必要なら、このスキーマをあなたのワークフローに合わせて微調整できます。
