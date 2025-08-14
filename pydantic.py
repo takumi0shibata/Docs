@@ -1,534 +1,256 @@
-from pydantic import BaseModel, Field
-from typing import List, Optional, Literal
-from enum import Enum
+以下は、有価証券報告書をテキスト化した単一のTXTです（ページや表IDはありません）。
+本文中に「表」が埋め込まれている場合があります（CSV/TSV/複数スペース/縦線などの擬似表行）。
 
-class ScopePattern(str, Enum):
-    SCOPE_1 = "スコープ1"
-    SCOPE_2 = "スコープ2"
-    SCOPE_3 = "スコープ3"
-    SCOPE_1_2 = "スコープ1+2"
-    SCOPE_1_2_3 = "スコープ1+2+3"
+あなたのタスクは、本文から下記の最小情報を年度すべて＆該当スコープすべてについて
+完全に漏れなく抽出し、指定のPydanticスキーマに**完全準拠**した**JSONのみ**を返すことです。
+各レコードには**抽出根拠（Evidence）**を必ず含めます。
 
-class Scope3Category(str, Enum):
-    CATEGORY_1 = "カテゴリ1: 購入した製品・サービス"
-    CATEGORY_2 = "カテゴリ2: 資本財"
-    CATEGORY_3 = "カテゴリ3: スコープ1,2に含まれない燃料及びエネルギー関連活動"
-    CATEGORY_4 = "カテゴリ4: 輸送、配送（上流）"
-    CATEGORY_5 = "カテゴリ5: 事業から出る廃棄物"
-    CATEGORY_6 = "カテゴリ6: 出張"
-    CATEGORY_7 = "カテゴリ7: 雇用者の通勤"
-    CATEGORY_8 = "カテゴリ8: リース資産（上流）"
-    CATEGORY_9 = "カテゴリ9: 輸送、配送（下流）"
-    CATEGORY_10 = "カテゴリ10: 販売した製品の加工"
-    CATEGORY_11 = "カテゴリ11: 販売した製品の使用"
-    CATEGORY_12 = "カテゴリ12: 販売した製品の廃棄"
-    CATEGORY_13 = "カテゴリ13: リース資産（下流）"
-    CATEGORY_14 = "カテゴリ14: フランチャイズ"
-    CATEGORY_15 = "カテゴリ15: 投資"
+【入力メタ】
+発行体名: {{issuer}}
 
-class GHGEmission(BaseModel):
-    """GHG排出量データ"""
-    amount: Optional[float] = Field(None, description="排出量（数値）")
-    unit: Optional[str] = Field(None, description="単位（例：t-CO2、千t-CO2等）")
-    year: Optional[int] = Field(None, description="対象年度")
-    scope3_categories: List[Scope3Category] = Field(default_factory=list, description="スコープ3の場合の該当カテゴリリスト")
-    evidence: str = Field(..., description="抽出根拠となる本文の抜粋")
+【本文（TXT全量。先頭からの文字位置=0起点）】
+{{full_txt}}
 
-class ReductionResult(BaseModel):
-    """削減実績データ（増加の場合は負の値）"""
-    reduction_rate: Optional[float] = Field(None, description="削減率（%）、増加の場合は負の値")
-    reduction_amount: Optional[float] = Field(None, description="削減量、増加の場合は負の値")
-    reduction_unit: Optional[str] = Field(None, description="削減量の単位")
-    baseline_year: Optional[int] = Field(None, description="基準年")
-    achievement_year: Optional[int] = Field(None, description="達成年")
-    scope3_categories: List[Scope3Category] = Field(default_factory=list, description="スコープ3の場合の該当カテゴリリスト")
-    is_increase: bool = Field(False, description="排出量が増加した場合はTrue")
-    evidence: str = Field(..., description="抽出根拠となる本文の抜粋")
+【抽出対象（この4種類以外は出力禁止）】
+1) 開示スコープ項目の組み合わせ（disclosure_items）
+   - 本文で実際に確認できた“開示項目”をすべて列挙（順不同・重複なし）
+     * "S1"                … scope 1 を開示
+     * "S2"                … scope 2 を開示
+     * "S1_PLUS_2"         … scope 1 と scope 2 の**合計**を開示（別名：S1+S2/自社排出量/Scope1,2合計 など）
+     * "S3"                … scope 3 を開示（合計またはカテゴリ別いずれでも可）
+     * "S1_PLUS_2_PLUS_3"  … scope 1, 2, 3 の**合計**を開示（別名：総排出量（S1-3） など）
+     * "NONE"              … **開示なし**（GHG排出量/削減率/削減目標のいずれも本文で確認できない）
+   - 重要ルール:
+     - "NONE" は排他的（["NONE"] のみ許容）。この場合、emissions/reductions/targets は空配列。
+     - "NONE" を選ぶ根拠は次のいずれか：
+       ① 明示の未開示記述（例：未開示/非開示/未算定/記載なし/該当なし/対象外 等）がある
+       ② 上記の開示項目や関連数値・率・目標の**証跡が本文に一切見つからない**
 
-class ReductionTarget(BaseModel):
-    """削減目標データ"""
-    target_rate: Optional[float] = Field(None, description="目標削減率（%）、カーボンニュートラル・ネットゼロは100%")
-    baseline_year: Optional[int] = Field(None, description="基準年")
-    target_year: Optional[int] = Field(None, description="目標年")
-    scope3_categories: List[Scope3Category] = Field(default_factory=list, description="スコープ3の場合の該当カテゴリリスト")
-    is_carbon_neutral: bool = Field(False, description="カーボンニュートラル・ネットゼロ目標かどうか")
-    evidence: str = Field(..., description="抽出根拠となる本文の抜粋")
+2) GHG排出量（emissions）
+   - レコード: { scope, fiscal_year_label, value, unit, (S3なら s3_category_code/name), evidence[] }
+   - scope は S1/S2/S3/S1_PLUS_2/S1_PLUS_2_PLUS_3 のいずれか。
+   - 年度は原文ラベル（例: "2024年3月期", "FY2023"）。値は数値化（カンマ除去）、単位は原文どおり。
+   - S3カテゴリがあれば code(1–15)/name を可能な限り付与。総量のみでも可。
+   - **本文で確認できたすべての年度**を網羅。
 
-class ThirdPartyVerification(BaseModel):
-    """第三者認証・検証情報"""
-    is_verified: bool = Field(False, description="第三者による認証・検証を受けているかどうか")
-    verification_organization: Optional[str] = Field(None, description="認証・検証機関名")
-    verification_standard: Optional[str] = Field(None, description="認証・検証基準")
-    evidence: Optional[str] = Field(None, description="抽出根拠となる本文の抜粋")
+3) GHG削減率（reductions）
+   - レコード: { scope, baseline_year, achievement_year, reduction_rate, evidence[] }
+   - reduction_rate は実数（割合）で -1〜1。10%削減→0.10、5%増→-0.05。
+   - 率が明記されない場合、同一 scope の排出量から
+     (baseline年度の値 - achievement年度の値) / baseline年度の値 で算出してよい（その根拠も evidence に含める）。
 
-class ScopeData(BaseModel):
-    """スコープ別データ"""
-    scope_pattern: ScopePattern = Field(..., description="スコープパターン")
-    emissions: List[GHGEmission] = Field(default_factory=list, description="排出量データのリスト")
-    reduction_results: List[ReductionResult] = Field(default_factory=list, description="削減実績データのリスト")
-    reduction_targets: List[ReductionTarget] = Field(default_factory=list, description="削減目標データのリスト")
-    third_party_verification: Optional[ThirdPartyVerification] = Field(None, description="第三者認証・検証情報")
+4) GHG削減目標（targets）
+   - レコード: { scopes[], base_year, target_year, reduction_rate|null, goal_kind, evidence[] }
+   - scopes は対象スコープ配列（S1/S2/S3/S1_PLUS_2/S1_PLUS_2_PLUS_3）。
+   - goal_kind: "reduction" | "carbon_neutral" | "net_zero"
+     - 「カーボンニュートラル/カーボンゼロ」→ carbon_neutral
+     - 「ネットゼロ/実質ゼロ」→ net_zero
+     - 割合目標のみ → reduction（この場合 reduction_rate は必須）
+   - base_year < target_year。reduction_rate がある場合は 0〜1。
 
-class GHGExtractionResult(BaseModel):
-    """GHG情報抽出結果"""
-    company_name: Optional[str] = Field(None, description="企業名")
-    report_year: Optional[int] = Field(None, description="報告書年度")
-    scope_data: List[ScopeData] = Field(default_factory=list, description="スコープ別データのリスト")
-    extraction_notes: Optional[str] = Field(None, description="抽出に関する補足事項")
+【Evidence（根拠）の作り方】
+- 各レコードの evidence は **1件以上**。次の形式で作成：
+  * quote … 原文からの**短い完全一致抜粋**（5〜180文字、改変・要約禁止）
+  * char_start / char_end … TXT先頭からの**0始まり文字位置**（どちらも整数）。少なくとも char_* か line_* を指定。
+  * line_start / line_end … TXTの**1始まり行番号**（改行カウントで算出）。少なくとも line_* か char_* を指定。
+  * is_table_like … その証跡が表構造（CSV/TSV/複数スペース/縦線）に見える場合は true、通常段落なら false。
+  * notes … 解析補足（例：列見出しとセル対応、単位の読み取り等）
+- 削減率を「排出量から算出」した場合は、**基準年と達成年の値それぞれの証跡**を evidence に**複数**入れること。
+
+【擬似表の取り扱い】
+- 年度列ヘッダ（例：「項目,2023年3月期,2024年3月期」）を検出し、行の項目（Scope1/Scope2/合計/Scope3等）と
+  列の年度を対応付けてセル値を解釈してよい。
+- 「合計/計/S1+S2/Scope1+2/自社排出量」→ S1_PLUS_2、
+  「S1+S2+S3/総排出量（S1-3）」→ S1_PLUS_2_PLUS_3 に正規化してよい。
+- 単位は原文のまま unit に格納（数値は value に数値型で）。
+
+【完全網羅と禁止事項】
+- 抽出できた**すべての年度**を漏れなく列挙（重複年度は別レコードで可）。
+- 推測・補完禁止。見つからないものは出力しない。
+- "NONE" の場合は emissions/reductions/targets を空配列にし、disclosure_absence を必ず出力。
+- 余計な説明やマークダウンは禁止。**JSONのみ**を返す。
+- 出力は Pydantic スキーマ "GHGMinimalExtractionV3" に**完全準拠**。
 
 
-# 有価証券報告書からのGHG情報抽出プロンプト
+from typing import List, Optional, Literal, Set
+from pydantic import BaseModel, Field, StrictFloat, StrictInt, root_validator, validator
 
-## 指示
-あなたは日本上場企業の有価証券報告書の「サステナビリティに関する考え方及び取組」の章からGHG（温室効果ガス）関連情報を抽出する専門家です。以下の要件に従って、正確かつ構造化された情報抽出を行ってください。
+# 公表され得る5項目 + 開示なし
+Scope = Literal['S1', 'S2', 'S3', 'S1_PLUS_2', 'S1_PLUS_2_PLUS_3']
+DisclosureItem = Literal['S1', 'S2', 'S3', 'S1_PLUS_2', 'S1_PLUS_2_PLUS_3', 'NONE']
+GoalKind = Literal['reduction', 'carbon_neutral', 'net_zero']
 
-## 抽出対象と要件
+class Evidence(BaseModel):
+    quote: str = Field(..., min_length=5, max_length=180,
+                       description="原文からの短い完全一致抜粋（改変なし）")
+    # 文字位置か行番号のどちらか（または両方）を指定
+    char_start: Optional[int] = Field(None, ge=0, description="TXT先頭からの0始まり文字位置")
+    char_end: Optional[int] = Field(None, ge=0, description="TXT先頭からの0始まり文字位置（終端）")
+    line_start: Optional[int] = Field(None, ge=1, description="1始まりの開始行番号")
+    line_end: Optional[int] = Field(None, ge=1, description="1始まりの終了行番号")
+    is_table_like: Optional[bool] = Field(False, description="CSV/TSV/複数スペース/縦線など表構造に見える場合は True")
+    notes: Optional[str] = Field(None, description="列見出し対応や単位読み取りなど補足")
 
-### 1. スコープパターンの識別
-文書を分析し、以下の5つのスコープパターンのうち、該当するものを特定してください：
-- **スコープ1**: 直接排出（自社の燃料使用等）
-- **スコープ2**: 間接排出（購入電力等）
-- **スコープ3**: その他の間接排出（サプライチェーン等）
-- **スコープ1+2**: スコープ1と2の合計
-- **スコープ1+2+3**: 全スコープの合計
+    class Config:
+        extra = 'forbid'
 
-### 2. 抽出項目
-各スコープパターンについて以下の3つの主要項目を抽出してください：
+    @root_validator
+    def _require_positions(cls, values):
+        cs, ce = values.get('char_start'), values.get('char_end')
+        ls, le = values.get('line_start'), values.get('line_end')
+        if (cs is None or ce is None) and (ls is None or le is None):
+            raise ValueError("Evidence には char_start/char_end または line_start/line_end の少なくとも一方を指定してください")
+        if cs is not None and ce is not None and ce < cs:
+            raise ValueError("char_end は char_start 以上である必要があります")
+        if ls is not None and le is not None and le < ls:
+            raise ValueError("line_end は line_start 以上である必要があります")
+        return values
 
-#### A. GHG排出量
-- **排出量**: 具体的な数値とその単位（t-CO2、千t-CO2等）
-- **対象年度**: その排出量がいつのものか
-- **スコープ3カテゴリ**: スコープ3の場合、該当するカテゴリリスト（複数の場合は全て抽出）
-- **抽出根拠**: 本文からの直接引用
+class Emission(BaseModel):
+    scope: Scope = Field(..., description="S1/S2/S3/S1_PLUS_2/S1_PLUS_2_PLUS_3")
+    fiscal_year_label: str = Field(..., description='例: "2024年3月期", "FY2023" など原文ラベル')
+    value: StrictFloat = Field(..., ge=0.0, description="数値（カンマ除去済み）")
+    unit: str = Field(..., description='例: "t-CO2e", "千t-CO2e"（原文のまま）')
+    # Scope 3 の場合のみ任意
+    s3_category_code: Optional[StrictInt] = Field(None, ge=1, le=15)
+    s3_category_name: Optional[str] = None
+    # 根拠（1件以上）
+    evidence: List[Evidence] = Field(..., min_items=1)
 
-#### B. 削減実績
-- **削減率または削減量**: パーセンテージまたは具体的な削減量と単位
-  - **重要**: 排出量が増加している場合は負の値で表現（例：-15%は15%増加）
-- **基準年**: 削減の基準となる年
-- **達成年**: 削減を達成した年
-- **スコープ3カテゴリ**: 該当するカテゴリリスト（複数の場合は全て抽出）
-- **増加フラグ**: 排出量が増加した場合の判定
-- **抽出根拠**: 本文からの直接引用
+    class Config:
+        extra = 'forbid'
 
-#### C. 削減目標
-- **目標率**: 削減目標のパーセンテージ
-  - カーボンニュートラル・ネットゼロ等の場合は100%として扱う
-- **基準年**: 目標設定の基準となる年
-- **目標年**: 目標達成予定年
-- **スコープ3カテゴリ**: 該当するカテゴリリスト（複数の場合は全て抽出）
-- **カーボンニュートラル判定**: CN/ネットゼロ宣言かどうか
-- **抽出根拠**: 本文からの直接引用（カーボンニュートラル・ネットゼロの記載を含む）
+class Reduction(BaseModel):
+    scope: Scope
+    baseline_year: StrictInt = Field(..., ge=1900, le=2200)
+    achievement_year: StrictInt = Field(..., ge=1900, le=2200)
+    reduction_rate: StrictFloat = Field(..., ge=-1.0, le=1.0,
+        description="(baseline - achievement) / baseline。10%削減=0.10、5%増=-0.05")
+    # 根拠（1件以上。算出の場合は基準年と達成年の値それぞれの証跡を含める）
+    evidence: List[Evidence] = Field(..., min_items=1)
 
-### 3. 第三者認証・検証の判定
-GHG排出量や削減実績について、第三者による認証・検証を受けているかを判定し、以下を抽出してください：
-- 認証・検証の有無
-- 認証・検証機関名（判明する場合）
-- 認証・検証基準（判明する場合）
-- 抽出根拠
+    class Config:
+        extra = 'forbid'
 
-## 重要な注意事項
+    @root_validator
+    def _years_order(cls, values):
+        b, a = values.get('baseline_year'), values.get('achievement_year')
+        if b is not None and a is not None and b > a:
+            raise ValueError("achievement_year は baseline_year 以上である必要があります")
+        return values
 
-### 数値の取り扱い
-- 数値は正確に抽出し、概算や推定値の場合はその旨を記録
-- 単位は必ず記載（t-CO2、千t-CO2、万t-CO2等）
-- 範囲で示されている場合は適切に処理
+class Target(BaseModel):
+    scopes: List[Scope] = Field(..., min_items=1, description="目標対象のスコープ群")
+    base_year: StrictInt = Field(..., ge=1900, le=2200)
+    target_year: StrictInt = Field(..., ge=1900, le=2200)
+    reduction_rate: Optional[StrictFloat] = Field(None, ge=0.0, le=1.0,
+        description="0.5 は 50%削減。割合記載が無ければ null")
+    goal_kind: GoalKind
+    # 根拠（1件以上）
+    evidence: List[Evidence] = Field(..., min_items=1)
 
-### 年度の取り扱い
-- 年度表記（例：2023年度、令和5年度）は西暦年で統一
-- 年度末の場合は適切に判断（例：2023年度→2023年）
+    class Config:
+        extra = 'forbid'
 
-### スコープ3カテゴリ
-カテゴリが明記されている場合は以下の標準分類リストから該当するものを選択：
-- **カテゴリ1**: 購入した製品・サービス
-- **カテゴリ2**: 資本財
-- **カテゴリ3**: スコープ1,2に含まれない燃料及びエネルギー関連活動
-- **カテゴリ4**: 輸送、配送（上流）
-- **カテゴリ5**: 事業から出る廃棄物
-- **カテゴリ6**: 出張
-- **カテゴリ7**: 雇用者の通勤
-- **カテゴリ8**: リース資産（上流）
-- **カテゴリ9**: 輸送、配送（下流）
-- **カテゴリ10**: 販売した製品の加工
-- **カテゴリ11**: 販売した製品の使用
-- **カテゴリ12**: 販売した製品の廃棄
-- **カテゴリ13**: リース資産（下流）
-- **カテゴリ14**: フランチャイズ
-- **カテゴリ15**: 投資
+    @root_validator
+    def _years_order(cls, values):
+        b, t = values.get('base_year'), values.get('target_year')
+        if b is not None and t is not None and b >= t:
+            raise ValueError("base_year は target_year より小さい必要があります")
+        return values
 
-**重要**: 複数のカテゴリが言及されている場合は、該当する全てのカテゴリをリスト形式で抽出してください。
+    @root_validator
+    def _rate_required_for_reduction(cls, values):
+        kind = values.get('goal_kind')
+        rate = values.get('reduction_rate')
+        if kind == 'reduction' and rate is None:
+            raise ValueError("goal_kind='reduction' の場合、reduction_rate は必須です")
+        return values
 
-### 削減率の取り扱い
-- **削減の場合**: 正の値（例：15%削減 → 15）
-- **増加の場合**: 負の値（例：10%増加 → -10）
-- **増加フラグ**: 排出量が増加した場合は`is_increase: true`を設定
+class DisclosureEvidence(BaseModel):
+    item: DisclosureItem = Field(..., description='NONE 以外の開示項目')
+    evidence: List[Evidence] = Field(..., min_items=1)
 
-### 抽出根拠の記載
-- 必ず元文書からの直接引用を含める
-- 引用は情報の信頼性を担保するのに十分な長さとする
-- 複数箇所からの情報は適切に組み合わせて記載
+    class Config:
+        extra = 'forbid'
 
-## 出力形式
-JSON形式で出力し、提供されたPydanticスキーマに完全に準拠してください。データが存在しない項目はnullまたは空リストとしてください。
+class DisclosureAbsence(BaseModel):
+    reason: Literal['explicit_statement', 'no_traces_found'] = Field(...,
+        description="明示の未開示記述があるか（explicit_statement）、痕跡が無いか（no_traces_found）")
+    # explicit_statement の場合は引用必須
+    evidence: Optional[List[Evidence]] = Field(None, description="未開示を示す文言の証跡（ある場合）")
+    notes: Optional[str] = Field(None, description="用いた探索語や確認範囲など")
 
-## 品質基準
-- **完全性**: 文書内の全てのGHG関連情報を漏れなく抽出
-- **正確性**: 数値、年度、分類を正確に抽出
-- **一貫性**: 同一企業内での情報の整合性を確保
-- **検証可能性**: 抽出根拠により第三者が検証可能
+    class Config:
+        extra = 'forbid'
 
----
+class GHGMinimalExtractionV3(BaseModel):
+    issuer: str = Field(..., description="発行体名")
+    disclosure_items: List[DisclosureItem] = Field(..., min_items=1,
+        description='本文で確認できた開示項目の組み合わせ。開示なしは ["NONE"] のみ許容。')
 
-**入力文書**: [ここに「サステナビリティに関する考え方及び取組」の章の内容を貼り付け]
+    # 開示があった項目ごとの根拠（NONE は含めない）
+    disclosure_evidence: Optional[List[DisclosureEvidence]] = Field(None)
 
-上記の文書から、指定されたJSON形式でGHG関連情報を抽出してください。
+    # NONE の場合の理由と根拠
+    disclosure_absence: Optional[DisclosureAbsence] = Field(None)
 
+    emissions: List[Emission] = Field(default_factory=list)
+    reductions: List[Reduction] = Field(default_factory=list)
+    targets: List[Target] = Field(default_factory=list)
 
-# Convert JSON to EXCEL
+    class Config:
+        extra = 'forbid'
+        anystr_strip_whitespace = True
+        validate_assignment = True
 
-import polars as pl
-import json
-from typing import List, Dict, Any, Optional
-from pathlib import Path
-import pandas as pd
+    @validator('disclosure_items')
+    def _unique_items(cls, v):
+        if len(v) != len(set(v)):
+            raise ValueError("disclosure_items に重複があります")
+        return v
 
-def convert_ghg_json_to_excel(
-    json_data: List[Dict[str, Any]], 
-    output_path: str = "ghg_extraction_results.xlsx"
-) -> pl.DataFrame:
-    """
-    GHG抽出結果のJSONデータをPolarsデータフレームに変換し、Excelファイルとして出力
-    
-    Args:
-        json_data: GHGExtractionResultのリスト（JSON形式）
-        output_path: 出力するExcelファイルのパス
-    
-    Returns:
-        pl.DataFrame: 変換されたPolarsデータフレーム
-    """
-    
-    # データを格納するリスト
-    rows = []
-    
-    for company_data in json_data:
-        company_name = company_data.get('company_name', '')
-        report_year = company_data.get('report_year')
-        extraction_notes = company_data.get('extraction_notes', '')
+    @root_validator
+    def _consistency(cls, values):
+        items: List[DisclosureItem] = values.get('disclosure_items') or []
+        emissions = values.get('emissions') or []
+        reductions = values.get('reductions') or []
+        targets = values.get('targets') or []
+        de = values.get('disclosure_evidence') or []
+        absence = values.get('disclosure_absence')
 
-        if not scope_data_list:
-            # scope_dataが空の場合、基本情報のみの行を追加
-            base_row = {
-                'company_name': company_name,
-                'report_year': report_year,
-                'scope_pattern': '',  # scope_dataがないため空
-                'extraction_notes': extraction_notes,
-                'is_verified': False,
-                'verification_organization': '',
-                'verification_standard': '',
-                'verification_evidence': '',
-                'data_type': 'no_scope_data',
-                'amount': None,
-                'unit': '',
-                'year': None,
-                'scope3_categories': '',
-                'evidence': '',
-                'reduction_rate': None,
-                'reduction_amount': None,
-                'reduction_unit': '',
-                'baseline_year': None,
-                'achievement_year': None,
-                'target_year': None,
-                'is_increase': False,
-                'target_rate': None,
-                'is_carbon_neutral': False
-            }
-            rows.append(base_row)
-            continue  # 次の会社データへ
-        
-        for scope_data in scope_data_list:
-            scope_pattern = scope_data.get('scope_pattern', '')
-            
-            # 基本情報の行データ
-            base_row = {
-                'company_name': company_name,
-                'report_year': report_year,
-                'scope_pattern': scope_pattern,
-                'extraction_notes': extraction_notes,
-            }
-            
-            # 第三者認証・検証情報
-            verification = scope_data.get('third_party_verification', {})
-            if verification:
-                base_row.update({
-                    'is_verified': verification.get('is_verified', False),
-                    'verification_organization': verification.get('verification_organization', ''),
-                    'verification_standard': verification.get('verification_standard', ''),
-                    'verification_evidence': verification.get('evidence', '')
-                })
-            else:
-                base_row.update({
-                    'is_verified': False,
-                    'verification_organization': '',
-                    'verification_standard': '',
-                    'verification_evidence': ''
-                })
-            
-            # GHG排出量データ
-            emissions = scope_data.get('emissions', [])
-            if emissions:
-                for emission in emissions:
-                    row = base_row.copy()
-                    row.update({
-                        'data_type': 'emission',
-                        'amount': emission.get('amount'),
-                        'unit': emission.get('unit', ''),
-                        'year': emission.get('year'),
-                        'scope3_categories': _format_categories(emission.get('scope3_categories', [])),
-                        'evidence': emission.get('evidence', ''),
-                        # 他の項目は空に設定
-                        'reduction_rate': None,
-                        'reduction_amount': None,
-                        'reduction_unit': '',
-                        'baseline_year': None,
-                        'achievement_year': None,
-                        'target_year': None,
-                        'is_increase': False,
-                        'target_rate': None,
-                        'is_carbon_neutral': False
-                    })
-                    rows.append(row)
-            
-            # 削減実績データ
-            reduction_results = scope_data.get('reduction_results', [])
-            if reduction_results:
-                for result in reduction_results:
-                    row = base_row.copy()
-                    row.update({
-                        'data_type': 'reduction_result',
-                        'reduction_rate': result.get('reduction_rate'),
-                        'reduction_amount': result.get('reduction_amount'),
-                        'reduction_unit': result.get('reduction_unit', ''),
-                        'baseline_year': result.get('baseline_year'),
-                        'achievement_year': result.get('achievement_year'),
-                        'scope3_categories': _format_categories(result.get('scope3_categories', [])),
-                        'is_increase': result.get('is_increase', False),
-                        'evidence': result.get('evidence', ''),
-                        # 他の項目は空に設定
-                        'amount': None,
-                        'unit': '',
-                        'year': None,
-                        'target_year': None,
-                        'target_rate': None,
-                        'is_carbon_neutral': False
-                    })
-                    rows.append(row)
-            
-            # 削減目標データ
-            reduction_targets = scope_data.get('reduction_targets', [])
-            if reduction_targets:
-                for target in reduction_targets:
-                    row = base_row.copy()
-                    row.update({
-                        'data_type': 'reduction_target',
-                        'target_rate': target.get('target_rate'),
-                        'baseline_year': target.get('baseline_year'),
-                        'target_year': target.get('target_year'),
-                        'scope3_categories': _format_categories(target.get('scope3_categories', [])),
-                        'is_carbon_neutral': target.get('is_carbon_neutral', False),
-                        'evidence': target.get('evidence', ''),
-                        # 他の項目は空に設定
-                        'amount': None,
-                        'unit': '',
-                        'year': None,
-                        'reduction_rate': None,
-                        'reduction_amount': None,
-                        'reduction_unit': '',
-                        'achievement_year': None,
-                        'is_increase': False
-                    })
-                    rows.append(row)
-            
-            # データが何もない場合は基本情報のみの行を追加
-            if not emissions and not reduction_results and not reduction_targets:
-                row = base_row.copy()
-                row.update({
-                    'data_type': 'no_data',
-                    'amount': None,
-                    'unit': '',
-                    'year': None,
-                    'scope3_categories': '',
-                    'evidence': '',
-                    'reduction_rate': None,
-                    'reduction_amount': None,
-                    'reduction_unit': '',
-                    'baseline_year': None,
-                    'achievement_year': None,
-                    'target_year': None,
-                    'is_increase': False,
-                    'target_rate': None,
-                    'is_carbon_neutral': False
-                })
-                rows.append(row)
-    
-    # Polarsデータフレームを作成
-    if not rows:
-        # 空のデータフレームを作成
-        df = pl.DataFrame(schema=_get_schema())
-    else:
-        df = pl.DataFrame(rows)
-    
-    # Excel出力用にPandasに変換（Polarsが直接Excel出力をサポートしていないため）
-    pandas_df = df.to_pandas()
-    
-    # Excelファイルに出力
-    with pd.ExcelWriter(output_path, engine='openpyxl') as writer:
-        pandas_df.to_excel(writer, sheet_name='GHG_Data', index=False)
-        
-        # ワークシートの書式設定
-        worksheet = writer.sheets['GHG_Data']
-        
-        # 列幅の自動調整
-        for column in worksheet.columns:
-            max_length = 0
-            column_letter = column[0].column_letter
-            for cell in column:
-                try:
-                    if len(str(cell.value)) > max_length:
-                        max_length = len(str(cell.value))
-                except:
-                    pass
-            adjusted_width = min(max_length + 2, 50)  # 最大50文字に制限
-            worksheet.column_dimensions[column_letter].width = adjusted_width
-    
-    print(f"Excel ファイルが生成されました: {output_path}")
-    print(f"総行数: {len(df)}")
-    print(f"企業数: {df['company_name'].n_unique()}")
-    
-    return df
+        if 'NONE' in items:
+            # ["NONE"] のみ許容、データは全て空、欠如理由が必要
+            if len(items) != 1:
+                raise ValueError('disclosure_items に "NONE" を含む場合、["NONE"] のみ許容されます')
+            if emissions or reductions or targets:
+                raise ValueError('disclosure_items=["NONE"] の場合、emissions/reductions/targets は空でなければなりません')
+            if de:
+                raise ValueError('disclosure_items=["NONE"] の場合、disclosure_evidence は空/未指定である必要があります')
+            if absence is None:
+                raise ValueError('disclosure_items=["NONE"] の場合、disclosure_absence を必ず指定してください')
+            # explicit_statement の場合は証跡を推奨（あれば1件以上）
+            if absence.reason == 'explicit_statement' and not absence.evidence:
+                raise ValueError('disclosure_absence.reason="explicit_statement" の場合、未開示を示す Evidence を1件以上含めてください')
+            return values
 
-def _format_categories(categories: List[str]) -> str:
-    """スコープ3カテゴリリストを文字列に変換"""
-    if not categories:
-        return ''
-    return '; '.join(categories)
+        # "NONE" 以外の場合：データに出てくる全スコープが disclosure_items に包含されていること
+        data_scopes: Set[Scope] = set(e.scope for e in emissions)
+        data_scopes |= set(r.scope for r in reductions)
+        for t in targets:
+            data_scopes |= set(t.scopes)
 
-def _get_schema() -> Dict[str, pl.DataType]:
-    """データフレームのスキーマを定義"""
-    return {
-        'company_name': pl.Utf8,
-        'report_year': pl.Int64,
-        'scope_pattern': pl.Utf8,
-        'data_type': pl.Utf8,
-        'extraction_notes': pl.Utf8,
-        'is_verified': pl.Boolean,
-        'verification_organization': pl.Utf8,
-        'verification_standard': pl.Utf8,
-        'verification_evidence': pl.Utf8,
-        'amount': pl.Float64,
-        'unit': pl.Utf8,
-        'year': pl.Int64,
-        'scope3_categories': pl.Utf8,
-        'evidence': pl.Utf8,
-        'reduction_rate': pl.Float64,
-        'reduction_amount': pl.Float64,
-        'reduction_unit': pl.Utf8,
-        'baseline_year': pl.Int64,
-        'achievement_year': pl.Int64,
-        'target_year': pl.Int64,
-        'is_increase': pl.Boolean,
-        'target_rate': pl.Float64,
-        'is_carbon_neutral': pl.Boolean
-    }
+        if not set(items).issuperset(data_scopes):
+            missing = sorted(list(data_scopes - set(items)))
+            raise ValueError(f"disclosure_items がデータに登場するスコープ {missing} を含んでいません")
 
-def load_and_convert_from_file(json_file_path: str, output_path: str = None) -> pl.DataFrame:
-    """
-    JSONファイルからデータを読み込んでExcelに変換
-    
-    Args:
-        json_file_path: 入力JSONファイルのパス
-        output_path: 出力Excelファイルのパス（Noneの場合は自動生成）
-    
-    Returns:
-        pl.DataFrame: 変換されたPolarsデータフレーム
-    """
-    if output_path is None:
-        output_path = Path(json_file_path).stem + "_converted.xlsx"
-    
-    with open(json_file_path, 'r', encoding='utf-8') as f:
-        json_data = json.load(f)
-    
-    # 単一のオブジェクトの場合はリストに変換
-    if isinstance(json_data, dict):
-        json_data = [json_data]
-    
-    return convert_ghg_json_to_excel(json_data, output_path)
+        # disclosure_evidence が items（NONE以外）をカバーしていること
+        if not de:
+            raise ValueError('開示がある場合、disclosure_evidence を指定してください')
+        de_items = {d.item for d in de}
+        needed = set(i for i in items if i != 'NONE')
+        if not de_items.issuperset(needed):
+            missing = sorted(list(needed - de_items))
+            raise ValueError(f"disclosure_evidence に {missing} の根拠が不足しています")
 
-# 使用例
-if __name__ == "__main__":
-    # サンプルデータ
-    sample_data = [
-        {
-            "company_name": "三菱商事",
-            "report_year": 2023,
-            "scope_data": [
-                {
-                    "scope_pattern": "スコープ1",
-                    "emissions": [
-                        {
-                            "amount": 1234.5,
-                            "unit": "t-CO2",
-                            "year": 2023,
-                            "scope3_categories": [],
-                            "evidence": "当社のスコープ1排出量は1,234.5t-CO2でした。"
-                        }
-                    ],
-                    "reduction_results": [
-                        {
-                            "reduction_rate": 15.0,
-                            "baseline_year": 2020,
-                            "achievement_year": 2023,
-                            "scope3_categories": [],
-                            "is_increase": False,
-                            "evidence": "2020年比で15%の削減を達成しました。"
-                        }
-                    ],
-                    "reduction_targets": [
-                        {
-                            "target_rate": 30.0,
-                            "baseline_year": 2020,
-                            "target_year": 2030,
-                            "scope3_categories": [],
-                            "is_carbon_neutral": False,
-                            "evidence": "2030年までに2020年比30%削減を目指します。"
-                        }
-                    ],
-                    "third_party_verification": {
-                        "is_verified": True,
-                        "verification_organization": "第三者認証機関A",
-                        "verification_standard": "ISO14064",
-                        "evidence": "第三者認証機関Aによる検証を受けています。"
-                    }
-                },
-                {
-                    "scope_pattern": "スコープ2",
-                    "emissions": [
-                        {
-                            "amount": 2345.6,
-                            "unit": "t-CO2",
-                            "year": 2023,
-                            "scope3_categories": [],
-                            "evidence": "スコープ2排出量は2,345.6t-CO2でした。"
-                        }
-                    ],
-                    "reduction_results": [],
-                    "reduction_targets": [],
-                    "third_party_verification": None
-                }
-            ],
-            "extraction_notes": "全データ抽出完了"
-        }
-    ]
-    
-    # 変換実行
-    df = convert_ghg_json_to_excel(sample_data, "sample_ghg_data.xlsx")
-    print("\nデータフレームの先頭5行:")
-    print(df.head())
+        return values
