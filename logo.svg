@@ -1,0 +1,11 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100" width="200" height="200">
+  <title>Abstract K Logo (Black)</title>
+  <desc>An abstract geometric logo loosely based on the letter K, in black.</desc>
+  
+  <path d="M25 30 V70 M55 20 L85 50 M55 80 L85 50" 
+        stroke="#000000" 
+        stroke-width="10" 
+        fill="none" 
+        stroke-linecap="round" 
+        stroke-linejoin="round"/>
+</svg>
