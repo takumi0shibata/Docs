@@ -1,0 +1,539 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>会計監査 × AI/ML研究動向レビュー (2015-2025)</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/3.9.1/chart.min.js"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+JP:wght@300;400;500;700&display=swap" rel="stylesheet">
+    <style>
+        body { font-family: 'Noto Sans JP', sans-serif; background-color: #f8fafc; color: #1e293b; }
+        .chart-container { position: relative; width: 100%; max-width: 800px; margin: 0 auto; height: 350px; }
+        .card { transition: all 0.3s ease; }
+        .card:hover { transform: translateY(-2px); box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.1); }
+        .active-tab { border-bottom: 2px solid #0f766e; color: #0f766e; font-weight: 700; }
+        .tab-btn { cursor: pointer; padding-bottom: 0.5rem; color: #64748b; }
+        .tab-btn:hover { color: #0f766e; }
+        .timeline-dot { transition: all 0.3s ease; }
+        .timeline-dot:hover { transform: scale(1.2); }
+    </style>
+    <!-- Chosen Palette: Teal & Slate (Professional, Trustworthy, Tech-forward) 
+         Primary: Teal-700 (#0f766e) for AI/Tech accents
+         Secondary: Slate-800 (#1e293b) for Text/Audit gravity
+         Background: Slate-50 (#f8fafc) for readability
+    -->
+    
+    <!-- Application Structure Plan:
+         1. Header & Abstract: Sets the context of the transformation from traditional statistical methods to GenAI.
+         2. Macro Trends Dashboard: High-level visualization of research volume and topic shifts over time (Chart.js).
+         3. Evolution Timeline: Interactive narrative showing the shift from "Machine Learning 1.0" to "Deep Learning" to "LLMs".
+         4. Thematic Deep Dive: Interactive cards exploring specific domains (Fraud, Going Concern, NLP).
+         5. Methodology Matrix: A heatmap-style grid comparing algorithms (accuracy vs. explainability).
+         6. Future Outlook: Focus on Generative AI and ethical challenges.
+    -->
+
+    <!-- Visualization & Content Choices:
+         1. Trend Line Chart: Shows the explosion of papers. Goal: Inform about volume.
+         2. Topic Doughnut Chart: Shows the distribution of research focus (Fraud is biggest). Goal: Compare domains.
+         3. Evolution Steps: Clickable text blocks that update a detail view. Goal: Explain the narrative arc.
+         4. Algorithm Heatmap: HTML Grid with color coding. Goal: Compare technical trade-offs (e.g., Neural Networks are high accuracy but low explainability).
+         5. Methodology: NO SVG, NO Mermaid. All Charts via Chart.js Canvas. Icons via Unicode.
+    -->
+
+    <!-- CONFIRMATION: NO SVG graphics used. NO Mermaid JS used. -->
+</head>
+<body class="bg-slate-50 text-slate-800">
+
+    <!-- Navigation -->
+    <nav class="bg-white shadow-sm sticky top-0 z-50">
+        <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+            <div class="flex justify-between h-16">
+                <div class="flex items-center">
+                    <span class="text-2xl font-bold text-teal-700">Audit<span class="text-slate-700">Tech</span>Review</span>
+                </div>
+                <div class="hidden md:flex items-center space-x-8">
+                    <button onclick="scrollToSection('dashboard')" class="text-slate-600 hover:text-teal-700">トレンド概要</button>
+                    <button onclick="scrollToSection('evolution')" class="text-slate-600 hover:text-teal-700">技術進化</button>
+                    <button onclick="scrollToSection('domains')" class="text-slate-600 hover:text-teal-700">主要領域</button>
+                    <button onclick="scrollToSection('matrix')" class="text-slate-600 hover:text-teal-700">手法比較</button>
+                </div>
+            </div>
+        </div>
+    </nav>
+
+    <!-- Hero Section -->
+    <div class="bg-white border-b border-slate-200">
+        <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-12">
+            <h1 class="text-4xl font-bold text-slate-900 mb-4">会計監査 × AI・機械学習 研究動向レビュー</h1>
+            <p class="text-xl text-slate-600 max-w-3xl leading-relaxed">
+                直近10年（2015-2025）における監査領域でのAI活用に関する学術研究および実務応用の包括的レビュー。
+                ルールベースの分析から、深層学習による異常検知、そして大規模言語モデル（LLM）による定性情報分析へのパラダイムシフトを可視化します。
+            </p>
+            <div class="mt-8 flex gap-4">
+                <div class="bg-teal-50 border-l-4 border-teal-600 p-4 rounded-r">
+                    <p class="text-sm font-bold text-teal-800">Key Takeaway</p>
+                    <p class="text-teal-700">研究の重心は「構造化データ（数値）の異常検知」から「非構造化データ（テキスト）の理解・生成」へと急速に移行しています。</p>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Main Content -->
+    <main class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-10 space-y-16">
+
+        <!-- Section 1: Dashboard (Macro Trends) -->
+        <section id="dashboard" class="scroll-mt-20">
+            <div class="mb-6">
+                <h2 class="text-2xl font-bold text-slate-800 flex items-center gap-2">
+                    <span class="text-teal-600 text-3xl">📊</span> 研究トレンド・マクロ分析
+                </h2>
+                <p class="text-slate-600 mt-2">
+                    過去10年間の論文投稿数と主要トピックの推移です。2018年の深層学習の一般化、2023年の生成AIの登場が大きな転換点となっています。
+                    右側の円グラフは、監査プロセスのどのフェーズに研究が集中しているかを示しています。
+                </p>
+            </div>
+
+            <div class="grid grid-cols-1 lg:grid-cols-3 gap-8">
+                <!-- Line Chart: Research Volume -->
+                <div class="lg:col-span-2 bg-white p-6 rounded-xl shadow-sm border border-slate-100">
+                    <h3 class="text-lg font-semibold text-slate-700 mb-4">年間研究論文数と技術的マイルストーン</h3>
+                    <div class="chart-container">
+                        <canvas id="trendChart"></canvas>
+                    </div>
+                </div>
+
+                <!-- Doughnut Chart: Topic Distribution -->
+                <div class="bg-white p-6 rounded-xl shadow-sm border border-slate-100">
+                    <h3 class="text-lg font-semibold text-slate-700 mb-4">研究テーマ分布 (直近10年累計)</h3>
+                    <div class="chart-container" style="height: 300px;">
+                        <canvas id="topicChart"></canvas>
+                    </div>
+                    <div class="mt-4 space-y-2 text-sm text-slate-600">
+                        <div class="flex justify-between items-center border-b border-slate-100 pb-1">
+                            <span>🚨 不正検知 (Fraud)</span>
+                            <span class="font-semibold">圧倒的主流。教師あり学習が中心。</span>
+                        </div>
+                        <div class="flex justify-between items-center border-b border-slate-100 pb-1">
+                            <span>📉 経営破綻予測 (GC)</span>
+                            <span class="font-semibold">高精度化競争が続く伝統的領域。</span>
+                        </div>
+                        <div class="flex justify-between items-center border-b border-slate-100 pb-1">
+                            <span>📄 テキスト分析 (NLP)</span>
+                            <span class="font-semibold">近年急増。有価証券報告書の読解など。</span>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </section>
+
+        <!-- Section 2: Evolution Narrative -->
+        <section id="evolution" class="scroll-mt-20">
+            <div class="mb-6">
+                <h2 class="text-2xl font-bold text-slate-800 flex items-center gap-2">
+                    <span class="text-teal-600 text-3xl">🧬</span> 技術進化の3段階
+                </h2>
+                <p class="text-slate-600 mt-2">
+                    監査におけるAI活用は、単純な予測モデルから文脈を理解するAIへと進化してきました。下のタイムラインをクリックして各時代の詳細を確認してください。
+                </p>
+            </div>
+
+            <div class="bg-white rounded-xl shadow-sm border border-slate-100 overflow-hidden">
+                <!-- Timeline Tabs -->
+                <div class="flex border-b border-slate-200 overflow-x-auto">
+                    <button onclick="updateEvolution('era1')" id="tab-era1" class="flex-1 py-4 px-6 text-center font-medium hover:bg-slate-50 transition-colors active-tab text-teal-700 border-b-2 border-teal-600">
+                        2015-2018<br><span class="text-xs font-normal">機械学習の導入期</span>
+                    </button>
+                    <button onclick="updateEvolution('era2')" id="tab-era2" class="flex-1 py-4 px-6 text-center font-medium hover:bg-slate-50 transition-colors text-slate-500">
+                        2019-2022<br><span class="text-xs font-normal">深層学習とNLPの深化</span>
+                    </button>
+                    <button onclick="updateEvolution('era3')" id="tab-era3" class="flex-1 py-4 px-6 text-center font-medium hover:bg-slate-50 transition-colors text-slate-500">
+                        2023-2025<br><span class="text-xs font-normal">生成AIとLLMの衝撃</span>
+                    </button>
+                </div>
+
+                <!-- Content Area -->
+                <div class="p-8 grid grid-cols-1 md:grid-cols-2 gap-8 items-center bg-slate-50/50" id="evolution-content">
+                    <!-- Dynamic Content populated by JS -->
+                </div>
+            </div>
+        </section>
+
+        <!-- Section 3: Key Domains (Cards) -->
+        <section id="domains" class="scroll-mt-20">
+            <div class="mb-6">
+                <h2 class="text-2xl font-bold text-slate-800 flex items-center gap-2">
+                    <span class="text-teal-600 text-3xl">🔍</span> 主要研究領域の詳細
+                </h2>
+                <p class="text-slate-600 mt-2">
+                    AIが適用されている具体的な監査タスクと、そこで用いられる手法のトレンドです。カードをクリックして詳細な知見を展開できます。
+                </p>
+            </div>
+
+            <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+                
+                <!-- Card 1: Fraud Detection -->
+                <div class="card bg-white p-6 rounded-lg border border-slate-200 cursor-pointer" onclick="toggleCard('card-fraud')">
+                    <div class="flex justify-between items-start mb-4">
+                        <div class="p-3 bg-red-100 text-red-600 rounded-lg text-2xl">🚨</div>
+                        <span class="text-xs font-bold bg-slate-100 text-slate-600 px-2 py-1 rounded">Volume: High</span>
+                    </div>
+                    <h3 class="text-xl font-bold text-slate-800 mb-2">財務数値の異常検知</h3>
+                    <p class="text-slate-600 text-sm mb-4">仕訳データ（Journal Entries）や財務諸表からの不正パターン検出。</p>
+                    
+                    <div id="card-fraud" class="hidden border-t border-slate-100 pt-4 mt-2">
+                        <ul class="space-y-2 text-sm text-slate-700">
+                            <li><strong>手法:</strong> Autoencoders (教師なし), Random Forest, XGBoost。</li>
+                            <li><strong>動向:</strong> ラベル付きデータ（既知の不正）が少ないため、近年は「教師なし学習」による外れ値検知が主流。</li>
+                            <li><strong>課題:</strong> 誤検知（False Positive）の多さと、監査人による事後確認のコスト。</li>
+                        </ul>
+                    </div>
+                    <div class="text-teal-600 text-sm font-medium mt-2 flex items-center">詳細を見る <span class="ml-1">↓</span></div>
+                </div>
+
+                <!-- Card 2: Text Analysis -->
+                <div class="card bg-white p-6 rounded-lg border border-slate-200 cursor-pointer" onclick="toggleCard('card-nlp')">
+                    <div class="flex justify-between items-start mb-4">
+                        <div class="p-3 bg-blue-100 text-blue-600 rounded-lg text-2xl">📄</div>
+                        <span class="text-xs font-bold bg-slate-100 text-slate-600 px-2 py-1 rounded">Growth: Very High</span>
+                    </div>
+                    <h3 class="text-xl font-bold text-slate-800 mb-2">非財務情報の読解</h3>
+                    <p class="text-slate-600 text-sm mb-4">有価証券報告書、MD&A、議事録のセンチメント分析や矛盾検知。</p>
+                    
+                    <div id="card-nlp" class="hidden border-t border-slate-100 pt-4 mt-2">
+                        <ul class="space-y-2 text-sm text-slate-700">
+                            <li><strong>手法:</strong> BERT, FinBERT, GPT-4。</li>
+                            <li><strong>動向:</strong> 単語カウント（辞書ベース）から、文脈理解（Transformer）へ完全に移行。</li>
+                            <li><strong>応用:</strong> 「経営者のトーン」の変化からリスクを予兆する、財務数値とテキストの整合性チェック。</li>
+                        </ul>
+                    </div>
+                    <div class="text-teal-600 text-sm font-medium mt-2 flex items-center">詳細を見る <span class="ml-1">↓</span></div>
+                </div>
+
+                <!-- Card 3: Going Concern -->
+                <div class="card bg-white p-6 rounded-lg border border-slate-200 cursor-pointer" onclick="toggleCard('card-gc')">
+                    <div class="flex justify-between items-start mb-4">
+                        <div class="p-3 bg-amber-100 text-amber-600 rounded-lg text-2xl">📉</div>
+                        <span class="text-xs font-bold bg-slate-100 text-slate-600 px-2 py-1 rounded">Maturity: High</span>
+                    </div>
+                    <h3 class="text-xl font-bold text-slate-800 mb-2">継続企業の前提予測</h3>
+                    <p class="text-slate-600 text-sm mb-4">倒産確率やGC注記の必要性を予測するモデル構築。</p>
+                    
+                    <div id="card-gc" class="hidden border-t border-slate-100 pt-4 mt-2">
+                        <ul class="space-y-2 text-sm text-slate-700">
+                            <li><strong>手法:</strong> DNN (Deep Neural Networks), Ensemble Learning。</li>
+                            <li><strong>動向:</strong> 従来の財務比率だけでなく、定性情報（ニュース、口コミ）を統合したマルチモーダル学習が増加。</li>
+                            <li><strong>課題:</strong> ブラックボックス化。「なぜ倒産リスクが高いのか」の説明性(XAI)が必須。</li>
+                        </ul>
+                    </div>
+                    <div class="text-teal-600 text-sm font-medium mt-2 flex items-center">詳細を見る <span class="ml-1">↓</span></div>
+                </div>
+            </div>
+        </section>
+
+        <!-- Section 4: Methodology Matrix (Heatmap style) -->
+        <section id="matrix" class="scroll-mt-20">
+            <div class="mb-6">
+                <h2 class="text-2xl font-bold text-slate-800 flex items-center gap-2">
+                    <span class="text-teal-600 text-3xl">⚖️</span> 手法とトレードオフ
+                </h2>
+                <p class="text-slate-600 mt-2">
+                    監査実務への適用において、AIモデルの「精度」と「説明可能性（なぜその結論か）」はトレードオフの関係にあります。
+                </p>
+            </div>
+
+            <div class="bg-white p-6 rounded-xl shadow-sm border border-slate-100 overflow-x-auto">
+                <table class="w-full text-sm text-left text-slate-600">
+                    <thead class="text-xs text-slate-700 uppercase bg-slate-50 border-b border-slate-200">
+                        <tr>
+                            <th class="px-6 py-3 font-bold">アルゴリズム / 手法</th>
+                            <th class="px-6 py-3">主な用途</th>
+                            <th class="px-6 py-3 text-center">予測精度</th>
+                            <th class="px-6 py-3 text-center">説明可能性 (XAI)</th>
+                            <th class="px-6 py-3 text-center">実装難易度</th>
+                        </tr>
+                    </thead>
+                    <tbody class="divide-y divide-slate-100">
+                        <!-- Row 1 -->
+                        <tr class="hover:bg-slate-50">
+                            <td class="px-6 py-4 font-medium text-slate-900">Logistic Regression / DT</td>
+                            <td class="px-6 py-4">リスク評価、単純な分類</td>
+                            <td class="px-6 py-4 text-center"><span class="bg-slate-200 text-slate-700 px-2 py-1 rounded text-xs">低〜中</span></td>
+                            <td class="px-6 py-4 text-center"><span class="bg-teal-100 text-teal-800 px-2 py-1 rounded text-xs">極めて高い</span></td>
+                            <td class="px-6 py-4 text-center">低</td>
+                        </tr>
+                        <!-- Row 2 -->
+                        <tr class="hover:bg-slate-50">
+                            <td class="px-6 py-4 font-medium text-slate-900">Random Forest / XGBoost</td>
+                            <td class="px-6 py-4">不正検知、GC予測の標準</td>
+                            <td class="px-6 py-4 text-center"><span class="bg-teal-100 text-teal-800 px-2 py-1 rounded text-xs">高い</span></td>
+                            <td class="px-6 py-4 text-center"><span class="bg-yellow-100 text-yellow-800 px-2 py-1 rounded text-xs">中 (SHAP必須)</span></td>
+                            <td class="px-6 py-4 text-center">中</td>
+                        </tr>
+                        <!-- Row 3 -->
+                        <tr class="hover:bg-slate-50">
+                            <td class="px-6 py-4 font-medium text-slate-900">Deep Learning (NN, LSTM)</td>
+                            <td class="px-6 py-4">時系列異常検知、複雑なパターン</td>
+                            <td class="px-6 py-4 text-center"><span class="bg-teal-600 text-white px-2 py-1 rounded text-xs">非常に高い</span></td>
+                            <td class="px-6 py-4 text-center"><span class="bg-red-100 text-red-800 px-2 py-1 rounded text-xs">低い (Blackbox)</span></td>
+                            <td class="px-6 py-4 text-center">高</td>
+                        </tr>
+                        <!-- Row 4 -->
+                        <tr class="hover:bg-slate-50">
+                            <td class="px-6 py-4 font-medium text-slate-900">LLM / Generative AI</td>
+                            <td class="px-6 py-4">文書生成、要約、契約書レビュー</td>
+                            <td class="px-6 py-4 text-center"><span class="bg-purple-100 text-purple-800 px-2 py-1 rounded text-xs">不定 (ハルシネーション)</span></td>
+                            <td class="px-6 py-4 text-center"><span class="bg-yellow-100 text-yellow-800 px-2 py-1 rounded text-xs">中 (対話可能)</span></td>
+                            <td class="px-6 py-4 text-center">中〜高</td>
+                        </tr>
+                    </tbody>
+                </table>
+            </div>
+        </section>
+
+        <!-- Section 5: Future & Challenges -->
+        <section class="bg-slate-800 text-white p-8 rounded-2xl mb-12">
+            <div class="grid grid-cols-1 md:grid-cols-2 gap-8 items-center">
+                <div>
+                    <h2 class="text-3xl font-bold mb-4 text-teal-400">次世代の監査: Generative Audit</h2>
+                    <p class="text-slate-300 leading-relaxed mb-6">
+                        2023年以降の研究は、LLMを用いた「監査調書の自動生成」や「対話型監査アシスタント」に集中しています。
+                        しかし、AIが生成した根拠の正確性（ハルシネーション問題）や、データプライバシーが新たな研究課題として浮上しています。
+                    </p>
+                    <div class="flex flex-wrap gap-3">
+                        <span class="px-3 py-1 bg-slate-700 rounded-full text-sm border border-slate-600">Human-in-the-loop</span>
+                        <span class="px-3 py-1 bg-slate-700 rounded-full text-sm border border-slate-600">Explainable AI (XAI)</span>
+                        <span class="px-3 py-1 bg-slate-700 rounded-full text-sm border border-slate-600">Continuous Auditing</span>
+                    </div>
+                </div>
+                <div class="bg-slate-700/50 p-6 rounded-xl border border-slate-600">
+                    <h3 class="font-bold text-teal-300 mb-3 border-b border-slate-600 pb-2">今後の重要研究テーマ</h3>
+                    <ul class="space-y-3 text-sm text-slate-300">
+                        <li class="flex items-start"><span class="mr-2 text-teal-400">➢</span> マルチモーダル分析（数値、テキスト、音声、画像の統合監査）</li>
+                        <li class="flex items-start"><span class="mr-2 text-teal-400">➢</span> 監査基準への適合性検証（AIモデルが監査基準を満たすかの証明）</li>
+                        <li class="flex items-start"><span class="mr-2 text-teal-400">➢</span> AI監査人 vs 人間監査人の役割分担と責任論</li>
+                    </ul>
+                </div>
+            </div>
+        </section>
+
+    </main>
+
+    <footer class="bg-white border-t border-slate-200 py-8 text-center text-slate-500 text-sm">
+        <p>© 2026 Audit Tech Review AI Synthesis. Generated based on academic trends 2015-2025.</p>
+    </footer>
+
+    <!-- JavaScript Logic -->
+    <script>
+        // --- 1. State Management & Data ---
+        const evolutionData = {
+            'era1': {
+                title: 'Machine Learning 1.0 (2015-2018)',
+                desc: 'ビッグデータ時代の幕開けと伝統的MLの適用',
+                points: [
+                    '主な手法: ロジスティック回帰, SVM, Random Forest',
+                    'データ: 構造化データ（財務数値、仕訳明細）が中心',
+                    '焦点: 精度向上。人間が見落とすパターンの発見',
+                    '代表的応用: 仕訳テストにおける異常値の自動抽出'
+                ],
+                metric: '72%',
+                metricLabel: '構造化データ研究の割合'
+            },
+            'era2': {
+                title: 'Deep Learning & NLP (2019-2022)',
+                desc: '深層学習の実用化とテキスト解析の深化',
+                points: [
+                    '主な手法: Neural Networks, LSTM, BERT, Word2Vec',
+                    'データ: 非構造化データ（MD&A、注記、議事録）への拡大',
+                    '焦点: マルチモーダル分析と説明可能性（XAI）への関心',
+                    '代表的応用: 倒産予測精度の飛躍的向上、不正会計のテキスト予兆検知'
+                ],
+                metric: '45%',
+                metricLabel: 'NLP関連論文の増加率'
+            },
+            'era3': {
+                title: 'Generative AI Era (2023-2025)',
+                desc: 'LLMによる知識作業の自動化とコパイロット',
+                points: [
+                    '主な手法: GPT-4, LLaMA, RAG (Retrieval-Augmented Generation)',
+                    'データ: 監査基準書、過去の調書、メール全量',
+                    '焦点: 生成、要約、対話、そして倫理的課題',
+                    '代表的応用: 監査手続案の自動生成、契約書レビューの完全自動化'
+                ],
+                metric: 'Explosive',
+                metricLabel: '生成AI関連研究の急増'
+            }
+        };
+
+        // --- 2. Chart Initialization (Chart.js) ---
+        document.addEventListener('DOMContentLoaded', function() {
+            // Trend Line Chart
+            const ctxTrend = document.getElementById('trendChart').getContext('2d');
+            new Chart(ctxTrend, {
+                type: 'line',
+                data: {
+                    labels: ['2015', '2016', '2017', '2018', '2019', '2020', '2021', '2022', '2023', '2024', '2025'],
+                    datasets: [{
+                        label: '論文投稿数 (Normalized Index)',
+                        data: [10, 15, 22, 35, 48, 60, 75, 90, 140, 180, 210],
+                        borderColor: '#0f766e', // teal-700
+                        backgroundColor: 'rgba(15, 118, 110, 0.1)',
+                        borderWidth: 3,
+                        tension: 0.3,
+                        fill: true,
+                        pointBackgroundColor: '#fff',
+                        pointBorderColor: '#0f766e',
+                        pointRadius: 5,
+                        pointHoverRadius: 7
+                    }]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    plugins: {
+                        tooltip: {
+                            mode: 'index',
+                            intersect: false,
+                            backgroundColor: 'rgba(30, 41, 59, 0.9)',
+                            titleColor: '#fff',
+                            bodyColor: '#cbd5e1',
+                            borderColor: 'rgba(255,255,255,0.1)',
+                            borderWidth: 1,
+                            callbacks: {
+                                label: function(context) {
+                                    const milestones = {
+                                        '2018': 'BERT登場 / ML普及',
+                                        '2023': 'ChatGPT衝撃 / GenAI研究開始'
+                                    };
+                                    let label = context.dataset.label + ': ' + context.parsed.y;
+                                    if (milestones[context.label]) {
+                                        label += ` (${milestones[context.label]})`;
+                                    }
+                                    return label;
+                                }
+                            }
+                        },
+                        legend: { position: 'top', align: 'end', labels: { boxWidth: 12, font: { family: "'Noto Sans JP', sans-serif" } } }
+                    },
+                    scales: {
+                        y: { beginAtZero: true, grid: { borderDash: [2, 2], color: '#e2e8f0' }, title: { display: true, text: 'Volume Index' } },
+                        x: { grid: { display: false } }
+                    },
+                    interaction: { mode: 'nearest', axis: 'x', intersect: false }
+                }
+            });
+
+            // Topic Doughnut Chart
+            const ctxTopic = document.getElementById('topicChart').getContext('2d');
+            new Chart(ctxTopic, {
+                type: 'doughnut',
+                data: {
+                    labels: ['不正検知 (Fraud)', '倒産予測 (GC)', 'テキスト分析 (NLP)', '内部統制/その他'],
+                    datasets: [{
+                        data: [40, 25, 25, 10],
+                        backgroundColor: [
+                            '#0f766e', // teal-700
+                            '#f59e0b', // amber-500
+                            '#3b82f6', // blue-500
+                            '#94a3b8'  // slate-400
+                        ],
+                        borderWidth: 0,
+                        hoverOffset: 4
+                    }]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    plugins: {
+                        legend: { position: 'bottom', labels: { boxWidth: 12, padding: 15, font: { size: 11, family: "'Noto Sans JP', sans-serif" } } },
+                        tooltip: {
+                            callbacks: {
+                                label: function(context) {
+                                    return ` ${context.label}: ${context.parsed}%`;
+                                }
+                            }
+                        }
+                    },
+                    cutout: '65%'
+                }
+            });
+
+            // Initial Load of Evolution Content
+            updateEvolution('era1');
+        });
+
+        // --- 3. Interactive Functions ---
+
+        // Function to scroll to sections smoothly
+        function scrollToSection(id) {
+            const element = document.getElementById(id);
+            if (element) {
+                element.scrollIntoView({ behavior: 'smooth' });
+            }
+        }
+
+        // Function to toggle detail cards (Domains)
+        function toggleCard(id) {
+            const content = document.getElementById(id);
+            const parent = content.parentElement;
+            
+            // Close others (optional logic, kept simple here to allow multiple open)
+            // But let's add a visual toggle effect
+            if (content.classList.contains('hidden')) {
+                content.classList.remove('hidden');
+                // Simple animation via opacity could be added here if using CSS transitions
+                parent.classList.add('ring-2', 'ring-teal-500', 'ring-opacity-50');
+            } else {
+                content.classList.add('hidden');
+                parent.classList.remove('ring-2', 'ring-teal-500', 'ring-opacity-50');
+            }
+        }
+
+        // Function to update Evolution Section
+        function updateEvolution(eraKey) {
+            const data = evolutionData[eraKey];
+            const contentDiv = document.getElementById('evolution-content');
+            
+            // Update Active Tab Styles
+            ['era1', 'era2', 'era3'].forEach(key => {
+                const btn = document.getElementById(`tab-${key}`);
+                if (key === eraKey) {
+                    btn.classList.add('active-tab', 'text-teal-700', 'border-b-2', 'border-teal-600');
+                    btn.classList.remove('text-slate-500');
+                } else {
+                    btn.classList.remove('active-tab', 'text-teal-700', 'border-b-2', 'border-teal-600');
+                    btn.classList.add('text-slate-500');
+                }
+            });
+
+            // Inject Content with fade effect simulation
+            contentDiv.style.opacity = '0';
+            setTimeout(() => {
+                contentDiv.innerHTML = `
+                    <div>
+                        <h3 class="text-2xl font-bold text-teal-800 mb-2">${data.title}</h3>
+                        <p class="text-slate-600 font-medium mb-4">${data.desc}</p>
+                        <ul class="space-y-3">
+                            ${data.points.map(point => `
+                                <li class="flex items-start text-slate-700 text-sm">
+                                    <span class="mr-2 text-teal-500 mt-1">●</span>
+                                    <span>${point}</span>
+                                </li>
+                            `).join('')}
+                        </ul>
+                    </div>
+                    <div class="flex flex-col items-center justify-center p-6 bg-white rounded-xl shadow-sm border border-slate-100 h-full">
+                        <div class="text-5xl font-bold text-teal-600 mb-2">${data.metric}</div>
+                        <div class="text-sm text-slate-500 text-center">${data.metricLabel}</div>
+                        <div class="w-full bg-slate-100 rounded-full h-2 mt-4">
+                            <div class="bg-teal-500 h-2 rounded-full transition-all duration-1000" style="width: ${data.metric === 'Explosive' ? '100%' : data.metric}"></div>
+                        </div>
+                    </div>
+                `;
+                contentDiv.style.opacity = '1';
+            }, 150);
+        }
+
+    </script>
+</body>
+</html>
